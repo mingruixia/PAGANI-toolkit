@@ -47,9 +47,33 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
-        run: cmake --build build
+        shell: pwsh
+        run: |
+          cmake --build build -j 2 *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Test (CPU)
-        run: ctest --test-dir build --output-on-failure
+        shell: pwsh
+        run: |
+          ctest --test-dir build --output-on-failure *>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Report errors as annotations
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($f in @("build.log", "test.log")) {
+            if (-not (Test-Path $f)) { continue }
+            $lines = Get-Content $f | Select-String -Pattern "error|FAILED|failed|Error|assert" | Select-Object -First 120
+            $chunks = [System.Collections.ArrayList]@()
+            $buf = ""
+            foreach ($l in $lines) {
+              $t = $l.Line.Trim()
+              if ($t.Length -gt 400) { $t = $t.Substring(0, 400) }
+              if (($buf.Length + $t.Length) -gt 3500) { [void]$chunks.Add($buf); $buf = "" }
+              $buf += $t + "%0A"
+            }
+            if ($buf) { [void]$chunks.Add($buf) }
+            foreach ($c in ($chunks | Select-Object -First 8)) { Write-Output "::error title=$f::$c" }
+          }
       - name: Package
         shell: pwsh
         run: ./packaging/make_package.ps1 -BuildDir build -OutDir dist
