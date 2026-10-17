@@ -45,7 +45,8 @@ def script_commands(script):
         low = s.lower()
         if not s or low.startswith(("@", "rem", "echo", "if errorlevel", "goto", ":", "exit")):
             continue
-        cmds.append(shlex.split(s.replace("\\", "/") if os.name != "nt" else s, posix=True))
+        # forward slashes work on Windows too and keep shlex from eating backslashes
+        cmds.append(shlex.split(s.replace("\\", "/"), posix=True))
     return cmds
 
 
