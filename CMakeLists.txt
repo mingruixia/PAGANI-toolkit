@@ -31,6 +31,10 @@ set(PAGANI_WEIGHTED_DIR ${PAGANI_PACKAGE_DIR}/exefiles_weighted)
 # CPU-backend builds of the GPU tools, used only by the test-suite
 set(PAGANI_TESTBIN_DIR ${CMAKE_BINARY_DIR}/test-bin)
 
+if(PAGANI_BUILD_TESTS)
+  enable_testing()
+endif()
+
 add_subdirectory(src/common)
 add_subdirectory(src/metrics)
 add_subdirectory(src/construct)
@@ -51,6 +55,5 @@ if(PAGANI_BUILD_GUI)
 endif()
 
 if(PAGANI_BUILD_TESTS)
-  enable_testing()
   add_subdirectory(tests)
 endif()
