@@ -1,5 +1,7 @@
 #include "mainwindow.hpp"
 
+#include <algorithm>
+
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -14,6 +16,8 @@
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIntValidator>
@@ -258,7 +262,11 @@ void MainWindow::buildUi() {
     split->addWidget(right);
     split->setStretchFactor(0, 0);
     split->setStretchFactor(1, 1);
-    split->setSizes({scroll->minimumWidth(), 520});
+    // initial size: all settings visible without scrolling when the screen allows it
+    const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+    const int w0 = std::min(scroll->minimumWidth() + 560, static_cast<int>(avail.width() * 0.92));
+    const int h0 = std::min(settingsPanel_->sizeHint().height() + 150, static_cast<int>(avail.height() * 0.9));
+    split->setSizes({scroll->minimumWidth(), std::max(300, w0 - scroll->minimumWidth())});
 
     auto* central = new QWidget;
     auto* cl = new QVBoxLayout(central);
@@ -266,7 +274,7 @@ void MainWindow::buildUi() {
     cl->addLayout(scriptRow);
     cl->addLayout(runRow);
     setCentralWidget(central);
-    resize(1220, 720);
+    resize(w0, h0);
 
     // dependencies between options
     for (QCheckBox* c : {group_, saveCormat_, globalLp_, globalCp_, gamma_, lambda_, sigma_, modularity_, nodalEff_,

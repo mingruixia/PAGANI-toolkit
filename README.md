@@ -4,7 +4,7 @@
 construction and graph-theoretical analysis of voxel-wise (high-resolution)
 functional brain networks.
 
-[中文说明](README_zh.md) · [User guide](docs/USER_GUIDE.md) · [Changelog](CHANGELOG.md) · [Validation](docs/VALIDATION.md)
+[中文说明](README_zh.md) · [User guide](docs/USER_GUIDE.md) · [Changelog](CHANGELOG.md) · [Validation](docs/VALIDATION.md) · [Validation report](docs/VALIDATION_REPORT.md)
 
 PAGANI builds a network for every subject from resting-state fMRI, with every
 grey-matter voxel as a node and thresholded correlations between voxel time

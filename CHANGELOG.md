@@ -39,7 +39,8 @@ weighted clustering, betweenness (every ordered node pair, as in 2.0 and
 BCT `betweenness_bin`), modularity.
 
 Use `tests/compare_results.py old_dir new_dir` to compare a 2.0 result folder
-with a 2.1 result folder file by file.
+with a 2.1 result folder file by file. A comparison of 2.0 and 2.1 on real
+data is summarised in [docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md).
 
 ### Other changes in behaviour
 
@@ -83,6 +84,7 @@ with a 2.1 result folder file by file.
 - Saved scripts quote all paths, stop on the first error and contain the GUI
   settings, so *Load Script* restores every option. Scripts saved by PAGANI
   1.x/2.0 can still be loaded.
+- Scales with the Windows display scaling (high-DPI screens).
 - The tools are located relative to `PAGANI.exe`, so the GUI works when started
   from a shortcut or another folder; settings are remembered between sessions.
 - Fixed: nodal efficiency alone was not converted to NIfTI (G-03), script

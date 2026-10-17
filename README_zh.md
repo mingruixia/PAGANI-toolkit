@@ -2,7 +2,7 @@
 
 基于 GPU 加速的体素水平（高分辨率）脑功能网络构建与图论分析工具。
 
-[English](README.md) · [使用手册（英文）](docs/USER_GUIDE.md) · [更新说明](CHANGELOG.md) · [验证方法](docs/VALIDATION.md)
+[English](README.md) · [使用手册（英文）](docs/USER_GUIDE.md) · [更新说明](CHANGELOG.md) · [验证方法](docs/VALIDATION.md) · [验证报告](docs/VALIDATION_REPORT.md)
 
 PAGANI 以每个灰质体素为节点、体素时间序列间经阈值化的相关为边，为每名被试构建脑网络，并计算全局与节点网络指标：
 

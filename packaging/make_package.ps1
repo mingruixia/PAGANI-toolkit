@@ -27,7 +27,7 @@ if (Test-Path $gui) {
 Copy-Item README.md, README_zh.md, CHANGELOG.md, LICENSE -Destination $stage -ErrorAction SilentlyContinue
 $docs = Join-Path $stage "docs"
 New-Item -ItemType Directory -Force -Path $docs | Out-Null
-Copy-Item docs\USER_GUIDE*.md, docs\VALIDATION.md -Destination $docs -ErrorAction SilentlyContinue
+Copy-Item docs\USER_GUIDE*.md, docs\VALIDATION.md, docs\VALIDATION_REPORT.md -Destination $docs -ErrorAction SilentlyContinue
 Copy-Item legacy\doc\PAGANI_manuscript_revised.pdf -Destination $docs -ErrorAction SilentlyContinue
 
 $zip = Join-Path $OutDir "$name.zip"
