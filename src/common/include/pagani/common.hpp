@@ -76,9 +76,10 @@ private:
 
 // ---------------------------------------------------------------- threads --
 unsigned hardware_threads();
-// Run fn(i) for i in [begin, end) on all hardware threads using a static
-// interleaved schedule (i = begin + tid, begin + tid + nthreads, ...).
-// fn receives (index, thread_id).
+// Run fn(i) for i in [begin, end) on a persistent pool of hardware threads
+// (deterministic round-robin schedule of small chunks). fn receives
+// (index, thread_id) with thread_id < nthreads. Calls made from inside a
+// parallel region run serially.
 void parallel_for(long long begin, long long end,
                   const std::function<void(long long, unsigned)>& fn,
                   unsigned nthreads = 0);

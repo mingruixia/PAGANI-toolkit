@@ -72,4 +72,14 @@ def test_gpu_newman(tmp_path, weighted):
     run("CUmodularity" if not weighted else "CUModularity", weighted, d)
     lab = R.read_nm(stem + "_modu.nm").astype(int)
     q = R.modularity(A, lab)
-    assert q > 0.6
+    # the GPU tool must reproduce the CPU implementation of the same algorithm
+    import shutil
+    d2 = tmp_path / "cpu"
+    d2.mkdir()
+    shutil.copy(stem + ".csr", d2)
+    subprocess.run([R.exe("Newman_Modularity_CPU", weighted), str(d2)], check=True, capture_output=True)
+    q_cpu = R.modularity(A, R.read_nm(str(d2 / Path(stem).name) + "_modu.nm").astype(int))
+    assert q == pytest.approx(q_cpu, abs=0.01)
+    # leading-eigenvector splitting is greedy; on this symmetric planted graph
+    # (6 equal modules, planted Q = 0.633) it reaches about 0.6
+    assert q > 0.57

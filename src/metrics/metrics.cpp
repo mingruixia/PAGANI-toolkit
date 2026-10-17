@@ -451,7 +451,7 @@ void apply_bg(const NewmanCtx& c, const std::vector<std::uint32_t>& members, con
         s -= c.k[i] * kx / c.two_m;
         s -= diag[a] * x[a];
         y[a] = s;
-    });
+    }, ng < 2048 ? 1u : 0u);  // small groups: threading overhead exceeds the work
 }
 
 // Split `members`; returns true and fills `side` (+1/-1) if a split increases Q.

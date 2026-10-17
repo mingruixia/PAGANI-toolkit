@@ -82,8 +82,14 @@ def main():
             if dst.exists():
                 print(version, kind, "already done", flush=True)
                 continue
+            # PAGANI 2.0 does not create the output folders (and then silently
+            # writes nothing, or writes into the data folder)
+            (Path(a.data) / kind).mkdir(exist_ok=True)
             for name, tool, args in steps(a.data, a.mask, a.thr, a.sparsity, weighted, version):
                 rc, dt = run([exe(pkg, weighted, tool), *args], log, scratch, a.timeout)
+                if name == "construct":
+                    for f in Path(a.data).glob("*.csr"):
+                        shutil.move(str(f), str(Path(a.data) / kind / f.name))
                 rows.append({"version": version, "network": kind, "step": name, "tool": tool,
                              "seconds": round(dt, 2), "exit": rc})
                 print(f"{version} {kind:10s} {name:14s} {dt:9.1f} s  exit {rc}", flush=True)
