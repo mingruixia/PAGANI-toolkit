@@ -7,6 +7,9 @@
 #include "app_util.hpp"
 #include "pagani/metrics.hpp"
 #include "pagani/random_network.hpp"
+#ifdef PAGANI_GPU_SPMV
+#include "pagani/gpu.hpp"
+#endif
 
 #ifndef PAGANI_MODULARITY_TOOL
 #define PAGANI_MODULARITY_TOOL "Louvain_Modularity"
@@ -15,7 +18,11 @@
 using namespace pagani;
 
 static Partition detect(const Csr& g, std::mt19937_64& rng) {
-#ifdef PAGANI_NEWMAN
+#if defined(PAGANI_NEWMAN) && defined(PAGANI_GPU_SPMV)
+    (void)rng;
+    gpu::SpMV spmv(g, kWeighted);
+    return newman_eigenvector(g, kWeighted, [&](const std::vector<double>& x, std::vector<double>& y) { spmv.multiply(x, y); });
+#elif defined(PAGANI_NEWMAN)
     (void)rng;
     return newman_eigenvector(g, kWeighted);
 #else

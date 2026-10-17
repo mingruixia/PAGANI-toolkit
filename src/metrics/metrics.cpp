@@ -429,6 +429,18 @@ void apply_bg(const NewmanCtx& c, const std::vector<std::uint32_t>& members, con
     const size_t ng = members.size();
     double kx = 0.0;
     for (size_t a = 0; a < ng; ++a) kx += c.k[members[a]] * x[a];
+    if (c.spmv && ng >= 4096) {
+        // A x for the members via a full-size product (GPU)
+        thread_local std::vector<double> xf, yf;
+        xf.assign(c.g.n, 0.0);
+        for (size_t a = 0; a < ng; ++a) xf[members[a]] = x[a];
+        c.spmv(xf, yf);
+        for (size_t a = 0; a < ng; ++a) {
+            const std::uint32_t i = members[a];
+            y[a] = yf[i] - c.k[i] * kx / c.two_m - diag[a] * x[a];
+        }
+        return;
+    }
     parallel_for(0, static_cast<long long>(ng), [&](long long a, unsigned) {
         const std::uint32_t i = members[a];
         double s = 0.0;

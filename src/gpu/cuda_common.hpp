@@ -69,6 +69,10 @@ public:
     }
     T* get() const { return p_; }
     size_t size() const { return n_; }
+    void swap(DeviceBuffer& o) noexcept {
+        T* p = p_; p_ = o.p_; o.p_ = p;
+        size_t n = n_; n_ = o.n_; o.n_ = n;
+    }
 
 private:
     T* p_ = nullptr;
