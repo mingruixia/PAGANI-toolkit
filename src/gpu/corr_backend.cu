@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cuda_common.hpp"
+#include "kernels.cuh"
 #include "pagani/construct.hpp"
 
 namespace pagani {
@@ -161,7 +162,7 @@ public:
                 for (unsigned b = a + 1; b < l; ++b) pairs[k++] = make_uint2(a, b);
             pairs_.resize(pairs.size());
             PAGANI_CUDA(cudaMemcpy(pairs_.get(), pairs.data(), pairs.size() * sizeof(uint2), cudaMemcpyHostToDevice));
-            Pc_ = static_cast<int>(std::min<long long>(P_, std::max<long long>(1024, (256ll << 20) / (4ll * B_))));
+            Pc_ = static_cast<int>(std::min<long long>((P_ + 15) / 16 * 16, std::max<long long>(1024, (256ll << 20) / (4ll * B_) / 16 * 16)));
             S1_.resize(static_cast<size_t>(Pc_) * B_);
             S2_.resize(static_cast<size_t>(Pc_) * B_);
         }
@@ -226,11 +227,13 @@ public:
     }
 
 private:
+    // block edge: multiple of the GEMM tile (96)
     static int choose_block(std::uint32_t n) {
-        int b = 4096;
-        if (const char* env = std::getenv("PAGANI_BLOCK")) b = std::max(32, std::atoi(env) / 32 * 32);
-        int need = static_cast<int>((n + 31) / 32 * 32);
-        return std::min(b, std::max(32, need));
+        const int t = gpu::kTile;
+        int b = 42 * t;  // 4032
+        if (const char* env = std::getenv("PAGANI_BLOCK")) b = std::max(t, std::atoi(env) / t * t);
+        int need = static_cast<int>((n + t - 1) / t * t);
+        return std::min(b, std::max(t, need));
     }
 
     size_t extra_bytes() const {
@@ -257,19 +260,15 @@ private:
     void compute_block(int bi, int bj) {
         const float* A = slice(bi, 0);
         const float* Bm = slice(bj, 1);
-        const float one = 1.0f, zero = 0.0f;
         if (type_ != CorrType::Kendall) {
-            PAGANI_CUBLAS(cublasSgemm(blas_.get(), CUBLAS_OP_T, CUBLAS_OP_N, B_, B_, l_, &one, A, l_, Bm, l_, &zero,
-                                      C_.get(), B_));
+            gpu::gemm_tn(B_, B_, l_, A, l_, Bm, l_, 0.0f, C_.get(), B_);
             return;
         }
         for (long long p0 = 0; p0 < P_; p0 += Pc_) {
             kendall_sign_kernel<<<cuda::grid_for(static_cast<size_t>(Pc_) * B_), 256>>>(A, l_, B_, pairs_.get(), p0, Pc_, P_, S1_.get());
             kendall_sign_kernel<<<cuda::grid_for(static_cast<size_t>(Pc_) * B_), 256>>>(Bm, l_, B_, pairs_.get(), p0, Pc_, P_, S2_.get());
             PAGANI_KERNEL_CHECK();
-            const float beta = p0 == 0 ? 0.0f : 1.0f;
-            PAGANI_CUBLAS(cublasSgemm(blas_.get(), CUBLAS_OP_T, CUBLAS_OP_N, B_, B_, Pc_, &one, S1_.get(), Pc_,
-                                      S2_.get(), Pc_, &beta, C_.get(), B_));
+            gpu::gemm_tn(B_, B_, Pc_, S1_.get(), Pc_, S2_.get(), Pc_, p0 == 0 ? 0.0f : 1.0f, C_.get(), B_);
         }
         const double n0 = static_cast<double>(P_);
         kendall_normalize_kernel<<<cuda::grid_for(C_.size()), 256>>>(C_.get(), B_, ties_.get() + 1ll * bi * B_,
@@ -298,7 +297,6 @@ private:
     }
 
     cuda::DeviceInit init_;
-    cuda::CublasHandle blas_;
     std::uint32_t n_ = 0, l_ = 0;
     CorrType type_ = CorrType::Pearson;
     int B_ = 4096, nb_ = 0;

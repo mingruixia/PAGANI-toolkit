@@ -1,9 +1,7 @@
 // CUDA helpers: error checking that throws pagani::Error, device info.
 #pragma once
 
-#include <cublas_v2.h>
 #include <cuda_runtime.h>
-#include <cusparse.h>
 
 #include <string>
 
@@ -18,20 +16,6 @@ namespace cuda {
     do {                                                                                              \
         cudaError_t e_ = (call);                                                                      \
         if (e_ != cudaSuccess) ::pagani::cuda::fail(#call, __FILE__, __LINE__, cudaGetErrorString(e_)); \
-    } while (0)
-
-#define PAGANI_CUBLAS(call)                                                                                 \
-    do {                                                                                                    \
-        cublasStatus_t s_ = (call);                                                                         \
-        if (s_ != CUBLAS_STATUS_SUCCESS)                                                                    \
-            ::pagani::cuda::fail(#call, __FILE__, __LINE__, "cuBLAS status " + std::to_string(static_cast<int>(s_))); \
-    } while (0)
-
-#define PAGANI_CUSPARSE(call)                                                                       \
-    do {                                                                                            \
-        cusparseStatus_t s_ = (call);                                                               \
-        if (s_ != CUSPARSE_STATUS_SUCCESS)                                                          \
-            ::pagani::cuda::fail(#call, __FILE__, __LINE__, cusparseGetErrorString(s_));            \
     } while (0)
 
 #define PAGANI_KERNEL_CHECK() PAGANI_CUDA(cudaGetLastError())
@@ -107,24 +91,6 @@ private:
 // clear message printed when no GPU is present) before any CUDA library call.
 struct DeviceInit {
     DeviceInit() { init_device(); }
-};
-
-class CublasHandle {
-public:
-    CublasHandle() { PAGANI_CUBLAS(cublasCreate(&h_)); }
-    ~CublasHandle() { cublasDestroy(h_); }
-    cublasHandle_t get() const { return h_; }
-private:
-    cublasHandle_t h_{};
-};
-
-class CusparseHandle {
-public:
-    CusparseHandle() { PAGANI_CUSPARSE(cusparseCreate(&h_)); }
-    ~CusparseHandle() { cusparseDestroy(h_); }
-    cusparseHandle_t get() const { return h_; }
-private:
-    cusparseHandle_t h_{};
 };
 
 inline unsigned grid_for(size_t n, unsigned threads = 256, unsigned max_blocks = 4096) {

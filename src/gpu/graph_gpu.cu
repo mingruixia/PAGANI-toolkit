@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cuda_common.hpp"
+#include "kernels.cuh"
 #include "pagani/gpu.hpp"
 
 namespace pagani {
@@ -105,11 +106,6 @@ __global__ void plus_x_sq_kernel(const float* y, const float* x, int n, double* 
     if (threadIdx.x == 0) part[blockIdx.x] = ss[0];
 }
 
-void check_size(const Csr& g) {
-    if (g.nnz() > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
-        throw Error("network has too many edges for the GPU sparse routines");
-}
-
 }  // namespace
 
 std::vector<double> betweenness_binary(const Csr& g) {
@@ -142,44 +138,27 @@ std::vector<double> betweenness_binary(const Csr& g) {
 
 EigenResult eigenvector_centrality(const Csr& g, bool weighted, double tol, int max_iter) {
     cuda::DeviceInit init;
-    check_size(g);
     const int n = static_cast<int>(g.n);
     EigenResult r;
     r.vector.assign(n, 0.0);
     if (n == 0) return r;
-    cuda::CusparseHandle sp;
-    DeviceBuffer<int> dR(n + 1), dC(std::max<size_t>(1, g.C.size()));
+    DeviceBuffer<unsigned> dR(n + 1), dC(std::max<size_t>(1, g.C.size()));
     DeviceBuffer<float> dV(std::max<size_t>(1, g.C.size())), x(n), y(n), xn(n);
-    std::vector<int> R(g.R.begin(), g.R.end());
     std::vector<float> V = weighted ? g.V : std::vector<float>(g.C.size(), 1.0f);
-    PAGANI_CUDA(cudaMemcpy(dR.get(), R.data(), (n + 1) * 4, cudaMemcpyHostToDevice));
+    PAGANI_CUDA(cudaMemcpy(dR.get(), g.R.data(), (n + 1) * 4, cudaMemcpyHostToDevice));
     if (!g.C.empty()) {
         PAGANI_CUDA(cudaMemcpy(dC.get(), g.C.data(), g.C.size() * 4, cudaMemcpyHostToDevice));
         PAGANI_CUDA(cudaMemcpy(dV.get(), V.data(), V.size() * 4, cudaMemcpyHostToDevice));
     }
     std::vector<float> x0(n, static_cast<float>(1.0 / std::sqrt(static_cast<double>(n))));
     PAGANI_CUDA(cudaMemcpy(x.get(), x0.data(), n * 4, cudaMemcpyHostToDevice));
-
-    cusparseSpMatDescr_t A;
-    cusparseDnVecDescr_t vx, vy;
-    PAGANI_CUSPARSE(cusparseCreateCsr(&A, n, n, static_cast<int64_t>(g.C.size()), dR.get(), dC.get(), dV.get(),
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F));
-    PAGANI_CUSPARSE(cusparseCreateDnVec(&vx, n, x.get(), CUDA_R_32F));
-    PAGANI_CUSPARSE(cusparseCreateDnVec(&vy, n, y.get(), CUDA_R_32F));
-    const float one = 1.0f, zero = 0.0f;
-    size_t ws = 0;
-    PAGANI_CUSPARSE(cusparseSpMV_bufferSize(sp.get(), CUSPARSE_OPERATION_NON_TRANSPOSE, &one, A, vx, &zero, vy,
-                                            CUDA_R_32F, CUSPARSE_SPMV_ALG_DEFAULT, &ws));
-    DeviceBuffer<char> work(std::max<size_t>(ws, 1));
     const unsigned grid = std::min<unsigned>(1024, cuda::grid_for(n));
     DeviceBuffer<double> sq(grid);
     DeviceBuffer<float> dmax(grid);
     std::vector<double> hsq(grid);
     std::vector<float> hmax(grid);
     for (int it = 1; it <= max_iter; ++it) {
-        PAGANI_CUSPARSE(cusparseDnVecSetValues(vx, x.get()));
-        PAGANI_CUSPARSE(cusparseSpMV(sp.get(), CUSPARSE_OPERATION_NON_TRANSPOSE, &one, A, vx, &zero, vy, CUDA_R_32F,
-                                     CUSPARSE_SPMV_ALG_DEFAULT, work.get()));
+        csr_spmv(n, dR.get(), dC.get(), dV.get(), x.get(), y.get());
         plus_x_sq_kernel<<<grid, 256>>>(y.get(), x.get(), n, sq.get());
         PAGANI_KERNEL_CHECK();
         PAGANI_CUDA(cudaMemcpy(hsq.data(), sq.get(), grid * sizeof(double), cudaMemcpyDeviceToHost));
@@ -195,9 +174,6 @@ EigenResult eigenvector_centrality(const Csr& g, bool weighted, double tol, int 
         r.iterations = it;
         if (diff < tol) { r.converged = true; break; }
     }
-    cusparseDestroySpMat(A);
-    cusparseDestroyDnVec(vx);
-    cusparseDestroyDnVec(vy);
     std::vector<float> hx(n);
     PAGANI_CUDA(cudaMemcpy(hx.data(), x.get(), n * 4, cudaMemcpyDeviceToHost));
     double nrm = 0;
@@ -217,17 +193,12 @@ EigenResult eigenvector_centrality(const Csr& g, bool weighted, double tol, int 
 // ------------------------------------------------------------------- SpMV
 struct SpMV::Impl {
     cuda::DeviceInit init;
-    cuda::CusparseHandle sp;
     int n = 0;
-    DeviceBuffer<int> R, C;
+    DeviceBuffer<unsigned> R, C;
     DeviceBuffer<double> V, x, y;
-    DeviceBuffer<char> work;
-    cusparseSpMatDescr_t A{};
-    cusparseDnVecDescr_t vx{}, vy{};
 };
 
 SpMV::SpMV(const Csr& g, bool weighted) : impl_(new Impl) {
-    check_size(g);
     Impl& m = *impl_;
     m.n = static_cast<int>(g.n);
     m.R.resize(g.n + 1);
@@ -235,39 +206,22 @@ SpMV::SpMV(const Csr& g, bool weighted) : impl_(new Impl) {
     m.V.resize(std::max<size_t>(1, g.C.size()));
     m.x.resize(std::max<size_t>(1, g.n));
     m.y.resize(std::max<size_t>(1, g.n));
-    std::vector<int> R(g.R.begin(), g.R.end());
     std::vector<double> V(g.C.size());
     for (size_t k = 0; k < g.C.size(); ++k) V[k] = weighted ? g.V[k] : 1.0;
-    PAGANI_CUDA(cudaMemcpy(m.R.get(), R.data(), R.size() * 4, cudaMemcpyHostToDevice));
+    PAGANI_CUDA(cudaMemcpy(m.R.get(), g.R.data(), g.R.size() * 4, cudaMemcpyHostToDevice));
     if (!g.C.empty()) {
         PAGANI_CUDA(cudaMemcpy(m.C.get(), g.C.data(), g.C.size() * 4, cudaMemcpyHostToDevice));
         PAGANI_CUDA(cudaMemcpy(m.V.get(), V.data(), V.size() * 8, cudaMemcpyHostToDevice));
     }
-    PAGANI_CUSPARSE(cusparseCreateCsr(&m.A, m.n, m.n, static_cast<int64_t>(g.C.size()), m.R.get(), m.C.get(), m.V.get(),
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
-    PAGANI_CUSPARSE(cusparseCreateDnVec(&m.vx, m.n, m.x.get(), CUDA_R_64F));
-    PAGANI_CUSPARSE(cusparseCreateDnVec(&m.vy, m.n, m.y.get(), CUDA_R_64F));
-    const double one = 1.0, zero = 0.0;
-    size_t ws = 0;
-    PAGANI_CUSPARSE(cusparseSpMV_bufferSize(m.sp.get(), CUSPARSE_OPERATION_NON_TRANSPOSE, &one, m.A, m.vx, &zero, m.vy,
-                                            CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &ws));
-    m.work.resize(std::max<size_t>(ws, 1));
 }
 
-SpMV::~SpMV() {
-    if (impl_->A) cusparseDestroySpMat(impl_->A);
-    if (impl_->vx) cusparseDestroyDnVec(impl_->vx);
-    if (impl_->vy) cusparseDestroyDnVec(impl_->vy);
-    delete impl_;
-}
+SpMV::~SpMV() { delete impl_; }
 
 void SpMV::multiply(const std::vector<double>& x, std::vector<double>& y) {
     Impl& m = *impl_;
     y.resize(m.n);
     PAGANI_CUDA(cudaMemcpy(m.x.get(), x.data(), m.n * 8, cudaMemcpyHostToDevice));
-    const double one = 1.0, zero = 0.0;
-    PAGANI_CUSPARSE(cusparseSpMV(m.sp.get(), CUSPARSE_OPERATION_NON_TRANSPOSE, &one, m.A, m.vx, &zero, m.vy, CUDA_R_64F,
-                                 CUSPARSE_SPMV_ALG_DEFAULT, m.work.get()));
+    csr_spmv(m.n, m.R.get(), m.C.get(), m.V.get(), m.x.get(), m.y.get());
     PAGANI_CUDA(cudaMemcpy(y.data(), m.y.get(), m.n * 8, cudaMemcpyDeviceToHost));
 }
 
