@@ -1,22 +1,31 @@
 # pagani_tool(<target> <output name> <unweighted|weighted> <sources...> [DEFS <definitions...>] [LIBS <libs...>])
 function(pagani_tool target outname variant)
-  cmake_parse_arguments(T "" "" "SOURCES;DEFS;LIBS" ${ARGN})
+  cmake_parse_arguments(T "" "ROOT" "SOURCES;DEFS;LIBS" ${ARGN})
+  if(NOT T_ROOT)
+    set(T_ROOT ${PAGANI_PACKAGE_DIR})
+  endif()
   add_executable(${target} ${T_SOURCES})
-  target_link_libraries(${target} PRIVATE pagani_metrics ${T_LIBS})
+  target_link_libraries(${target} PRIVATE pagani_metrics pagani_construct ${T_LIBS})
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
   if(variant STREQUAL "weighted")
     target_compile_definitions(${target} PRIVATE PAGANI_WEIGHTED ${T_DEFS})
-    set(outdir ${PAGANI_WEIGHTED_DIR})
+    set(outdir ${T_ROOT}/exefiles_weighted)
   else()
     target_compile_definitions(${target} PRIVATE ${T_DEFS})
-    set(outdir ${PAGANI_UNWEIGHTED_DIR})
+    set(outdir ${T_ROOT}/exefiles)
   endif()
   set_target_properties(${target} PROPERTIES OUTPUT_NAME ${outname}
     RUNTIME_OUTPUT_DIRECTORY ${outdir}
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${outdir}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${outdir}
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${outdir})
-  install(TARGETS ${target} RUNTIME DESTINATION $<IF:$<STREQUAL:${variant},weighted>,exefiles_weighted,exefiles>)
+  if(T_ROOT STREQUAL PAGANI_PACKAGE_DIR)
+    if(variant STREQUAL "weighted")
+      install(TARGETS ${target} RUNTIME DESTINATION exefiles_weighted)
+    else()
+      install(TARGETS ${target} RUNTIME DESTINATION exefiles)
+    endif()
+  endif()
 endfunction()
 set(PAGANI_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
 
@@ -34,3 +43,13 @@ pagani_tool(newman_cpu_unweighted Newman_Modularity_CPU unweighted SOURCES modul
             DEFS PAGANI_NEWMAN PAGANI_MODULARITY_TOOL="Newman_Modularity_CPU")
 pagani_tool(newman_cpu_weighted   Newman_Modularity_CPU weighted   SOURCES modularity.cpp
             DEFS PAGANI_NEWMAN PAGANI_MODULARITY_TOOL="Newman_Modularity_CPU")
+
+# CPU-backend builds of the construction tools for the test-suite
+if(PAGANI_BUILD_TESTS)
+  foreach(v unweighted weighted)
+    pagani_tool(test_cormat_${v}   CUCorMat   ${v} SOURCES cormat.cpp    DEFS PAGANI_CPU_BACKEND ROOT ${PAGANI_TESTBIN_DIR})
+    pagani_tool(test_cormathr_${v} CUCorMatHr ${v} SOURCES cormat_hr.cpp DEFS PAGANI_CPU_BACKEND ROOT ${PAGANI_TESTBIN_DIR})
+  endforeach()
+  pagani_tool(test_kendall CuCorMat-sca-kendall weighted SOURCES cormat_hr.cpp
+              DEFS PAGANI_CPU_BACKEND PAGANI_KENDALL ROOT ${PAGANI_TESTBIN_DIR})
+endif()

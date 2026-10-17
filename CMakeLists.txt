@@ -28,9 +28,12 @@ find_package(Threads REQUIRED)
 set(PAGANI_PACKAGE_DIR ${CMAKE_BINARY_DIR}/package)
 set(PAGANI_UNWEIGHTED_DIR ${PAGANI_PACKAGE_DIR}/exefiles)
 set(PAGANI_WEIGHTED_DIR ${PAGANI_PACKAGE_DIR}/exefiles_weighted)
+# CPU-backend builds of the GPU tools, used only by the test-suite
+set(PAGANI_TESTBIN_DIR ${CMAKE_BINARY_DIR}/test-bin)
 
 add_subdirectory(src/common)
 add_subdirectory(src/metrics)
+add_subdirectory(src/construct)
 add_subdirectory(src/apps)
 
 if(PAGANI_BUILD_CUDA)
