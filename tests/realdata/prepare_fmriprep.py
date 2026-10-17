@@ -1,8 +1,8 @@
 """Prepare PAGANI test data from fMRIPrep outputs (validation only).
 
 For each subject: stream the MNI152NLin2009cAsym res-2 preprocessed BOLD
-(.nii.gz) volume by volume, block-average to 4 mm, regress out 12 motion
-parameters (+ derivatives), WM, CSF and a quadratic trend, band-pass
+(.nii.gz) volume by volume, block-average to 4 mm, regress out 6 motion
+parameters and their derivatives, WM, CSF and a quadratic trend, band-pass
 0.01-0.08 Hz, and write an uncompressed float32 4D .nii. Also writes a group
 grey-matter probability mask (mean GM probseg x all brain masks) at 4 mm.
 
