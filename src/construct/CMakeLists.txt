@@ -1,0 +1,3 @@
+add_library(pagani_construct STATIC construct.cpp)
+target_include_directories(pagani_construct PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(pagani_construct PUBLIC pagani_common)

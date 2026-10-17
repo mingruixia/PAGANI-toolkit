@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/pagani">
+        <file alias="icon">resources/pagani.png</file>
+        <file alias="sigma">resources/smallworldsigma.jpg</file>
+        <file alias="gamma">resources/clusteringcoefficientgamma.jpg</file>
+        <file alias="lambda">resources/characteristicpathlengthlambda.jpg</file>
+        <file alias="fisher">resources/gif.gif</file>
+    </qresource>
+</RCC>

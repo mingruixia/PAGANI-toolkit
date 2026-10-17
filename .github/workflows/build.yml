@@ -1,0 +1,101 @@
+name: build
+
+on:
+  push:
+    branches: [master, develop]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-cpu:
+    name: Linux (CPU tools + tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r tests/requirements.txt
+      - name: Configure
+        run: cmake -S . -B build -DPAGANI_BUILD_CUDA=OFF -DPAGANI_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  windows:
+    name: Windows (full package)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: '12.6.2'
+          method: network
+          sub-packages: '["nvcc", "cudart", "visual_studio_integration"]'
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          arch: win64_msvc2019_64
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r tests/requirements.txt
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build -j 2 *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Test (CPU)
+        shell: pwsh
+        run: |
+          ctest --test-dir build --output-on-failure *>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Report errors as annotations
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($f in @("build.log", "test.log")) {
+            if (-not (Test-Path $f)) { continue }
+            $lines = Get-Content $f | Select-String -Pattern "error|FAILED|failed|Error|assert" | Select-Object -First 120
+            $chunks = [System.Collections.ArrayList]@()
+            $buf = ""
+            foreach ($l in $lines) {
+              $t = $l.Line.Trim()
+              if ($t.Length -gt 400) { $t = $t.Substring(0, 400) }
+              if (($buf.Length + $t.Length) -gt 3500) { [void]$chunks.Add($buf); $buf = "" }
+              $buf += $t + "%0A"
+            }
+            if ($buf) { [void]$chunks.Add($buf) }
+            foreach ($c in ($chunks | Select-Object -First 8)) { Write-Output "::error title=$f::$c" }
+          }
+      - name: Package
+        shell: pwsh
+        run: ./packaging/make_package.ps1 -BuildDir build -OutDir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PAGANI-windows-x64
+          path: dist/*.zip
+      - name: Development build (pre-release "dev-build")
+        if: github.ref == 'refs/heads/develop'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev-build --yes --cleanup-tag || true
+          gh release create dev-build dist/*.zip --prerelease --target "$GITHUB_SHA" \
+            --title "Development build" --notes "Automatic build of the develop branch ($GITHUB_SHA). For testing only."
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          draft: true

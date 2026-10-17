@@ -1,29 +1,33 @@
-# Prerequisites
-*.d
-*.sdf
-*.ipch
-
-# Compiled Object files
-*.slo
-*.lo
-*.o
+# build outputs
+/build*/
+/out/
+/dist/
+*.exe
+*.dll
+*.pdb
+*.ilk
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+*.o
 *.lib
+*.a
+*.so
+*.exp
+# IDE / tooling
+.vs/
+.vscode/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+CMakeUserPresets.json
+__pycache__/
+*.pyc
+.pytest_cache/
+# runtime logs & test outputs
+BNA_time_log
+tests/_work/
+tests/validation_report.*
+dist/

@@ -1,0 +1,32 @@
+enable_language(CUDA)
+find_package(CUDAToolkit REQUIRED)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "52")
+  # Pascal .. Hopper/Ada, plus PTX for newer GPUs
+  set(CMAKE_CUDA_ARCHITECTURES 61-real 75-real 86-real 89-real 90)
+endif()
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
+
+add_library(pagani_gpu STATIC cuda_common.cu kernels.cu corr_backend.cu fw_gpu.cu graph_gpu.cu)
+target_include_directories(pagani_gpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(pagani_gpu PUBLIC pagani_construct pagani_metrics CUDA::cudart_static)
+set_target_properties(pagani_gpu PROPERTIES CUDA_SEPARABLE_COMPILATION OFF POSITION_INDEPENDENT_CODE ON)
+target_compile_options(pagani_gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr -lineinfo>)
+if(MSVC)
+  target_compile_options(pagani_gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/utf-8>)
+endif()
+
+set(APPS ${PAGANI_APPS_DIR})
+foreach(v unweighted weighted)
+  pagani_tool(cucormat_${v}   CUCorMat   ${v} SOURCES ${APPS}/cormat.cpp    LIBS pagani_gpu)
+  pagani_tool(cucormathr_${v} CUCorMatHr ${v} SOURCES ${APPS}/cormat_hr.cpp LIBS pagani_gpu)
+  pagani_tool(cubfwlp_${v}    CUBFW_Lp   ${v} SOURCES ${APPS}/lp_gpu.cpp      LIBS pagani_gpu)
+  pagani_tool(cuec_${v}       CUEC       ${v} SOURCES ${APPS}/eigenvector.cpp LIBS pagani_gpu)
+endforeach()
+pagani_tool(cubc_unweighted CUBC unweighted SOURCES ${APPS}/betweenness.cpp LIBS pagani_gpu)
+pagani_tool(cumod_unweighted CUmodularity unweighted SOURCES ${APPS}/modularity.cpp LIBS pagani_gpu
+            DEFS PAGANI_NEWMAN PAGANI_GPU_SPMV PAGANI_MODULARITY_TOOL="CUmodularity")
+pagani_tool(cumod_weighted CUModularity weighted SOURCES ${APPS}/modularity.cpp LIBS pagani_gpu
+            DEFS PAGANI_NEWMAN PAGANI_GPU_SPMV PAGANI_MODULARITY_TOOL="CUModularity")
+pagani_tool(kendall_weighted CuCorMat-sca-kendall weighted SOURCES ${APPS}/cormat_hr.cpp DEFS PAGANI_KENDALL LIBS pagani_gpu)
