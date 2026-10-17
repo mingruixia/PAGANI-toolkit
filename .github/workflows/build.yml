@@ -103,4 +103,5 @@ jobs:
           files: dist/*.zip
           name: PAGANI Toolkit ${{ github.ref_name }}
           body_path: dist/RELEASE_NOTES.md
-          draft: true
+          draft: false
+          make_latest: true
