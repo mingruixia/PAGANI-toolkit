@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.0 — maintenance release
+## 2.1.0 — 2026-10-17 (maintenance release)
 
 PAGANI 2.1 is a maintenance release of PAGANI 2.0 (HBM 2018). It adds no new
 analyses: the same tools, command lines and file formats are kept, so existing
