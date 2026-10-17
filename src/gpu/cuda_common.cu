@@ -1,5 +1,6 @@
 #include "cuda_common.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 
@@ -16,6 +17,12 @@ void fail(const char* what, const char* file, int line, const std::string& detai
 size_t free_device_memory() {
     size_t f = 0, t = 0;
     if (cudaMemGetInfo(&f, &t) != cudaSuccess) return 0;
+    // test knob: pretend the GPU has less memory so that the streaming code
+    // paths for very large data can be validated on small inputs
+    if (const char* env = std::getenv("PAGANI_GPU_MEM_LIMIT_MB")) {
+        const long long mb = std::atoll(env);
+        if (mb > 0) f = std::min(f, static_cast<size_t>(mb) << 20);
+    }
     return f;
 }
 

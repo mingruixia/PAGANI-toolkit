@@ -1,6 +1,74 @@
-# PAGANI-toolkit-
-This is a complete software package with a fire-new GUI and the updated command sets
-There are three folders: 'software package', 'doc' and 'src'. 'software package' contains a green version of the PAGANI-VBN software without installation. User can start the software directly by click 'PAGANI-X.X' icon after downloading. 'src' folder contains the source codes of the algorithm parts of the software. 'doc' is the detail manual of this PAGANI-VBN platform.By reading this users can not only learn the operation approach, but also understand specific algorithm the paltform use.
-Welcome to use our software and give valuable suggestions for a better user experience! 
+# PAGANI Toolkit
 
-The most recent update of PAGANI Toolkit is the dev version of PAGANI-2.0, which includes all new features compared with the old version. To see the details please refer to the HBM paper "PAGANI Toolkit: Parallel graph-theoretical analysis package for brain network big data". However, the software should undergo a comprehensive test before merged to the master branch. 
+**PA**rallel **G**raph-theoretical **AN**alys**I**s toolkit — GPU-accelerated
+construction and graph-theoretical analysis of voxel-wise (high-resolution)
+functional brain networks.
+
+[中文说明](README_zh.md) · [User guide](docs/USER_GUIDE.md) · [Changelog](CHANGELOG.md) · [Validation](docs/VALIDATION.md)
+
+PAGANI builds a network for every subject from resting-state fMRI, with every
+grey-matter voxel as a node and thresholded correlations between voxel time
+series as edges, and computes global and nodal network metrics:
+
+- **Construction** — Pearson, Spearman or Kendall correlation; correlation or
+  sparsity thresholds; individual and group-level (r or Fisher-z averaged)
+  networks; unweighted and weighted.
+- **Global metrics** — characteristic path length, clustering coefficient,
+  small-world gamma / lambda / sigma (Maslov–Sneppen random networks),
+  modularity (Louvain, Newman).
+- **Nodal metrics** — degree/strength, nodal efficiency, clustering coefficient,
+  betweenness, eigenvector centrality, participation coefficient — written as
+  NIfTI images.
+
+A Qt GUI runs the whole pipeline; every step is also a command-line program for
+scripts and servers.
+
+## Download
+
+Get `PAGANI-Toolkit-<version>-win64.zip` from the
+[Releases](https://github.com/mingruixia/PAGANI-toolkit/releases) page, unzip
+and start `PAGANI.exe`. Requirements: 64-bit Windows 10/11 and an NVIDIA GPU
+(GTX 10xx or newer) with a current driver; no CUDA installation is needed.
+See the [user guide](docs/USER_GUIDE.md).
+
+Version 2.1 is a maintenance release of 2.0 that fixes several calculation
+errors — please read the [changelog](CHANGELOG.md) if you compare with earlier
+results.
+
+## Building from source
+
+Requirements: CMake ≥ 3.21, a C++17 compiler (MSVC 2022 on Windows), the CUDA
+toolkit 12.x for the GPU tools and Qt 5.15 or 6 for the GUI.
+
+```bat
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Qt\5.15.2\msvc2019_64
+cmake --build build
+ctest --test-dir build --output-on-failure
+powershell -File packaging\make_package.ps1 -BuildDir build -OutDir dist
+```
+
+Options: `-DPAGANI_BUILD_CUDA=OFF` (CPU tools only, also on Linux/macOS),
+`-DPAGANI_BUILD_GUI=OFF`, `-DPAGANI_BUILD_TESTS=OFF`. The tests need Python
+with `pip install -r tests/requirements.txt`.
+
+Repository layout:
+
+```
+src/common     NIfTI, CSR network files, random networks, utilities
+src/metrics    graph metrics (CPU)
+src/construct  correlation and thresholding engine
+src/gpu        CUDA kernels and GPU back ends
+src/apps       the command-line tools
+src/gui        the Qt GUI
+tests          reference implementations and tests
+legacy         PAGANI 2.0 sources (2018), for reference only
+docs           user guide, validation, code review and development plan
+```
+
+## Citation
+
+If you use PAGANI, please cite:
+
+Du H, Xia M, Zhao K, Liao X, Yang H, Wang Y, He Y. PAGANI Toolkit: Parallel
+graph-theoretical analysis package for brain network big data.
+*Human Brain Mapping* 2018. https://doi.org/10.1002/hbm.23996

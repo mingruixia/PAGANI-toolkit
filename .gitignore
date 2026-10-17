@@ -29,3 +29,5 @@ __pycache__/
 # runtime logs & test outputs
 BNA_time_log
 tests/_work/
+tests/validation_report.*
+dist/

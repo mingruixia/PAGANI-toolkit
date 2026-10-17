@@ -5,6 +5,10 @@ if(NOT QT_FOUND)
 endif()
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets)
 set(CMAKE_AUTOMOC ON)
+# Qt itself uses the DLL C runtime: build the GUI the same way (the command-line
+# tools keep the static runtime). The package ships the VC runtime DLLs next to
+# PAGANI.exe (packaging/make_package.ps1).
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_AUTORCC ON)
 
 add_library(pagani_gui_core STATIC pipeline.cpp pipeline.hpp)
