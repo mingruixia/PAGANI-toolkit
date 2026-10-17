@@ -610,47 +610,59 @@ bool newman_split(const NewmanCtx& c, const std::vector<std::uint32_t>& members,
     if (lambda > 1e-8) {
         side.assign(ng, 1);
         for (size_t a = 0; a < ng; ++a) side[a] = x[a] >= 0 ? 1 : -1;
-        // s^T B s and fine tuning (single Kernighan-Lin style sweep, as in Newman 2006)
+        // s^T B s and fine tuning: Kernighan-Lin style sweeps (each node moved once
+        // per sweep, best intermediate state kept), repeated while they improve
+        // the split (Newman 2006)
         std::vector<double> s(ng), bs(ng);
         for (size_t a = 0; a < ng; ++a) s[a] = side[a];
         apply_bg(c, members, pos, diag, s, bs);
-        double f = 0.0;
-        for (size_t a = 0; a < ng; ++a) f += s[a] * bs[a];
+        double best_f = 0.0;
+        for (size_t a = 0; a < ng; ++a) best_f += s[a] * bs[a];
         // B_aa = -k_i^2/2m - diag   (A_ii = 0)
         std::vector<double> baa(ng);
         for (size_t a = 0; a < ng; ++a) baa[a] = -c.k[members[a]] * c.k[members[a]] / c.two_m - diag[a];
-        double best_f = f;
         std::vector<double> best_s = s;
-        std::vector<char> moved(ng, 0);
-        for (size_t step = 0; step < ng; ++step) {
-            // choose unmoved node with the largest increase
-            double best_delta = -std::numeric_limits<double>::infinity();
-            size_t pick = ng;
-            for (size_t a = 0; a < ng; ++a) {
-                if (moved[a]) continue;
-                double delta = -4.0 * s[a] * bs[a] + 4.0 * baa[a];
-                if (delta > best_delta) { best_delta = delta; pick = a; }
+        std::vector<char> moved(ng);
+        for (int sweep = 0; sweep < 20; ++sweep) {
+            if (sweep > 0) {
+                s = best_s;
+                apply_bg(c, members, pos, diag, s, bs);
             }
-            if (pick == ng) break;
-            // flip and update bs = B s
-            const double old = s[pick];
-            s[pick] = -old;
-            moved[pick] = 1;
-            f += best_delta;
-            const std::uint32_t i = members[pick];
-            const double coef = -2.0 * old;  // change of s[pick]
-            for (std::uint32_t e = c.g.R[i]; e < c.g.R[i + 1]; ++e) {
-                int b = pos[c.g.C[e]];
-                if (b > 0) bs[b - 1] += coef * wgt(c, e);
+            double f = best_f;
+            bool improved = false;
+            std::fill(moved.begin(), moved.end(), 0);
+            for (size_t step = 0; step < ng; ++step) {
+                // choose unmoved node with the largest increase
+                double best_delta = -std::numeric_limits<double>::infinity();
+                size_t pick = ng;
+                for (size_t a = 0; a < ng; ++a) {
+                    if (moved[a]) continue;
+                    double delta = -4.0 * s[a] * bs[a] + 4.0 * baa[a];
+                    if (delta > best_delta) { best_delta = delta; pick = a; }
+                }
+                if (pick == ng) break;
+                // flip and update bs = B s
+                const double old = s[pick];
+                s[pick] = -old;
+                moved[pick] = 1;
+                f += best_delta;
+                const std::uint32_t i = members[pick];
+                const double coef = -2.0 * old;  // change of s[pick]
+                for (std::uint32_t e = c.g.R[i]; e < c.g.R[i + 1]; ++e) {
+                    int b = pos[c.g.C[e]];
+                    if (b > 0) bs[b - 1] += coef * wgt(c, e);
+                }
+                const double ki = c.k[i];
+                for (size_t a = 0; a < ng; ++a) bs[a] += coef * (-c.k[members[a]] * ki / c.two_m);
+                bs[pick] += coef * (-diag[pick]);
+                if (f > best_f + 1e-12 * std::max(1.0, std::fabs(best_f))) { best_f = f; best_s = s; improved = true; }
             }
-            const double ki = c.k[i];
-            for (size_t a = 0; a < ng; ++a) bs[a] += coef * (-c.k[members[a]] * ki / c.two_m);
-            bs[pick] += coef * (-diag[pick]);
-            if (f > best_f + 1e-12) { best_f = f; best_s = s; }
+            if (!improved) break;
         }
         int np = 0, nn = 0;
         for (size_t a = 0; a < ng; ++a) { side[a] = best_s[a] > 0 ? 1 : -1; (side[a] > 0 ? np : nn)++; }
-        ok = best_f / (2.0 * c.two_m) > 1e-10 && np > 0 && nn > 0;
+        // as in PAGANI 2.0 (MIN_GROUP = 1): no single-node modules
+        ok = best_f / (2.0 * c.two_m) > 1e-10 && np > 1 && nn > 1;
     }
     for (auto i : members) pos[i] = 0;
     return ok;

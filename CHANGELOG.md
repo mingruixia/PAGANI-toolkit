@@ -56,8 +56,11 @@ with a 2.1 result folder file by file.
   computes betweenness of unweighted networks as before.
 - Newman modularity: the leading eigenvector of each split is computed with
   the Lanczos method (fully converged) instead of a power iteration that often
-  stopped at its iteration limit; module partitions can differ slightly from
-  2.0 and the tools are many times faster.
+  stopped at its iteration limit, and the Kernighan–Lin fine tuning is repeated
+  until it no longer improves the split (Newman 2006). On the real-data test
+  the unweighted GPU tool of 2.0 failed on every network (NaN eigenvalue, a
+  single module, Q = −∞); 2.1 found partitions with higher Q than 2.0 for
+  weighted networks. As in 2.0, modules have at least two nodes.
 - Multi-threaded tools reuse a thread pool, which removes a large overhead on
   Windows (most visible for the Newman tools).
 - Every program returns a non-zero exit code on failure, prints the reason, and
