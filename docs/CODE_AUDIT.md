@@ -49,6 +49,7 @@
 | P-01 | `W/PC_CPU/PC_CPU/main.cpp:149` | 假设模块编号为 1..M，`WithinModule[m-1]`；若出现 0 号模块越界写 | 参与系数错误或堆损坏（需与各模块划分程序的编号约定核对） |
 | CP-01 | `W/Cp/Cp/Cp_main.cpp:42` | 省略 Cp 类型参数（argc==4）时仍访问 `argv[4]` | 崩溃 |
 | CP-02 | `W/Cp/Cp/Cp_2_NoG.cpp` | Onnela 版本对权重原地除以最大权重，修改了输入数组 | 需核实对后续随机网络/输出无副作用 |
+| **CP-03** | `W/Cp/Cp/Cp_2.cpp:27`、`Cp_2_NoG.cpp:29` | Onnela 加权聚类系数的最大权重只在 `V[0..N-1]`（前 N 条边）中求取，而非全部边 | 权重被除以偏小的最大值，Cp 系统性偏大且偏差因被试而异（真实数据验证中偏大 3–14%）（2026-10-17 实测发现） |
 | L-01 | `U/Lp/CUBFW_Lp/CUBFW_Lp/CUBFW_Lp_main.cpp:119` | `(numVertices-1)*numVertices` 为 int 乘法，N>46341 溢出 | 算法选择（BFW/BFS）错误，主要影响性能；原网络与随机网络判定条件 `>=`/`>` 不一致 |
 | L-02 | `U/Lp/CUBFW_Lp/CUBFW_Lp/CUBFW_Lp.cpp:93` | `x<1 && x>N` 恒假，不连通检测失效 | 不连通网络不提示（数值因 1/inf=0 仍正确） |
 | V-01 | BC、Louvain Q、Newman 模块度 | 归一化约定（BC 是否 /2、Q 定义）未与标准实现核对 | 列入验证清单 |

@@ -38,17 +38,29 @@ __global__ void brandes_kernel(const unsigned* __restrict__ R, const unsigned* _
         while (true) {
             if (threadIdx.x == 0) s_more = 0;
             __syncthreads();
+            // expand: unvisited neighbours of level d get level d + 1 (identical
+            // values written concurrently, so plain stores are enough)
+            bool found = false;
             for (int v = threadIdx.x; v < n; v += blockDim.x) {
                 if (dist[v] != d) continue;
-                const double sv = sigma[v];
                 for (unsigned k = R[v]; k < R[v + 1]; ++k) {
                     const int w = static_cast<int>(C[k]);
-                    if (atomicCAS(&dist[w], -1, d + 1) == -1) s_more = 1;
-                    if (dist[w] == d + 1) atomicAdd(&sigma[w], sv);
+                    if (dist[w] == -1) { dist[w] = d + 1; found = true; }
                 }
             }
+            if (found) s_more = 1;
             __syncthreads();
             if (!s_more) break;
+            // count shortest paths by pulling from level d (no atomics)
+            for (int w = threadIdx.x; w < n; w += blockDim.x) {
+                if (dist[w] != d + 1) continue;
+                double acc = 0.0;
+                for (unsigned k = R[w]; k < R[w + 1]; ++k) {
+                    const int u = static_cast<int>(C[k]);
+                    if (dist[u] == d) acc += sigma[u];
+                }
+                sigma[w] = acc;
+            }
             ++d;
             __syncthreads();
         }

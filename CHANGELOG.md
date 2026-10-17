@@ -25,7 +25,8 @@ PAGANI 2.0 or earlier.
 | **Eigenvector centrality** | eigenvector multiplied by the eigenvalue, so values were scaled differently for every network | unit-length (L2) eigenvector; the eigenvalue is written to `<network>_evalue.txt` | E-01 |
 | BOLD images or masks with **scaling factors, extensions or integer types** | `scl_slope/scl_inter` ignored, a 352-byte header was assumed, int16/uint8 images were read as garbage | all common NIfTI-1 data types, scaling, extensions and byte order are handled; unsupported files stop with an error | N-01, N-02 |
 | **Weighted vs unweighted edge sets** | weighted networks used `r ≥ t − 1e-6`, unweighted `r > t` | both use `r > t` | C-03 |
-| **Sparsity thresholds** | edge count could deviate from the requested sparsity when correlation values were tied | exactly the K strongest edges (K = s % of all node pairs, computed as in 2.0); ties broken by node index | — |
+| **Sparsity thresholds** | edge count could deviate from the requested sparsity when correlation values were tied | exactly the K strongest edges, K = ⌈⌊2·M·s/100⌋ / 2⌉ for M node pairs as in the 2.0 source code (the released 2.0 executables used ⌊M·s/100⌋, which can differ by one edge); ties broken by node index | — |
+| **Weighted clustering coefficient (Onnela)** | weights were divided by the largest of the *first N* edge weights instead of the largest weight of the network, so Cp was too large by a subject-dependent factor (on the real-data test: 3–14 %) | weights divided by the network's maximum weight (Onnela et al. 2005, BCT `clustering_coef_wu`) | CP-03 |
 | Voxels with **constant time series** inside the mask | produced NaN correlations that were silently treated as 0 | correlations are 0 and a warning reports how many voxels are affected | C-05 |
 | `to_average` given as a single letter (e.g. `y`) | silently produced an empty group network | rejected with a message | C-06 |
 | Participation coefficient with modules numbered from 0 | out-of-range write | modules 1…M, isolated nodes 0, both handled | P-01 |
@@ -33,8 +34,8 @@ PAGANI 2.0 or earlier.
 Results that are **not** expected to change (beyond floating-point rounding):
 individual Pearson networks built from the command line, degree, unweighted
 clustering coefficient, path length/efficiency (Lp is the harmonic mean,
-`1 / global efficiency`, as in 2.0; weighted distance = 1 / weight), Onnela and
-Barrat weighted clustering, betweenness (every ordered node pair, as in 2.0 and
+`1 / global efficiency`, as in 2.0; weighted distance = 1 / weight), Barrat
+weighted clustering, betweenness (every ordered node pair, as in 2.0 and
 BCT `betweenness_bin`), modularity.
 
 Use `tests/compare_results.py old_dir new_dir` to compare a 2.0 result folder
