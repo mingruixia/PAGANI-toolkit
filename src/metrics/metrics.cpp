@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -454,6 +455,131 @@ void apply_bg(const NewmanCtx& c, const std::vector<std::uint32_t>& members, con
     }, ng < 2048 ? 1u : 0u);  // small groups: threading overhead exceeds the work
 }
 
+// Eigen-decomposition of a small symmetric matrix (cyclic Jacobi). A is n x n,
+// row major, destroyed; returns eigenvalues and eigenvectors (columns of Q).
+void jacobi_eigen(std::vector<double>& A, int n, std::vector<double>& w, std::vector<double>& Q) {
+    Q.assign(static_cast<size_t>(n) * n, 0.0);
+    for (int i = 0; i < n; ++i) Q[static_cast<size_t>(i) * n + i] = 1.0;
+    auto at = [&](int i, int j) -> double& { return A[static_cast<size_t>(i) * n + j]; };
+    for (int sweep = 0; sweep < 100; ++sweep) {
+        double off = 0.0, tot = 0.0;
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j) (i == j ? tot : off) += at(i, j) * at(i, j);
+        if (off <= 1e-30 * (tot + off) || off == 0.0) break;
+        for (int p = 0; p < n - 1; ++p)
+            for (int q = p + 1; q < n; ++q) {
+                const double apq = at(p, q);
+                if (std::fabs(apq) < 1e-300) continue;
+                const double theta = (at(q, q) - at(p, p)) / (2.0 * apq);
+                const double t = (theta >= 0 ? 1.0 : -1.0) / (std::fabs(theta) + std::sqrt(theta * theta + 1.0));
+                const double cs = 1.0 / std::sqrt(t * t + 1.0), sn = t * cs;
+                for (int k = 0; k < n; ++k) {  // A = J^T A J
+                    const double akp = at(k, p), akq = at(k, q);
+                    at(k, p) = cs * akp - sn * akq;
+                    at(k, q) = sn * akp + cs * akq;
+                }
+                for (int k = 0; k < n; ++k) {
+                    const double apk = at(p, k), aqk = at(q, k);
+                    at(p, k) = cs * apk - sn * aqk;
+                    at(q, k) = sn * apk + cs * aqk;
+                }
+                for (int k = 0; k < n; ++k) {
+                    double& qkp = Q[static_cast<size_t>(k) * n + p];
+                    double& qkq = Q[static_cast<size_t>(k) * n + q];
+                    const double a = qkp, b = qkq;
+                    qkp = cs * a - sn * b;
+                    qkq = sn * a + cs * b;
+                }
+            }
+    }
+    w.resize(n);
+    for (int i = 0; i < n; ++i) w[i] = at(i, i);
+}
+
+// Largest algebraic eigenvalue and its unit eigenvector of a symmetric
+// operator (n x n), by Lanczos with full reorthogonalisation and explicit
+// restarts. `x` holds the start vector and receives the eigenvector.
+// `scale` is a bound of the spectral radius (for the tolerances).
+double leading_eigenpair(size_t n, const std::function<void(const std::vector<double>&, std::vector<double>&)>& op,
+                         std::vector<double>& x, double scale) {
+    auto dot = [&](const std::vector<double>& a, const std::vector<double>& b) {
+        double s = 0.0;
+        for (size_t i = 0; i < n; ++i) s += a[i] * b[i];
+        return s;
+    };
+    auto normalize = [&](std::vector<double>& v) {
+        const double nv = std::sqrt(dot(v, v));
+        if (nv > 0)
+            for (double& t : v) t /= nv;
+        return nv;
+    };
+    if (n == 1) {
+        std::vector<double> y(1);
+        x.assign(1, 1.0);
+        op(x, y);
+        return y[0];
+    }
+    normalize(x);
+    const int m = static_cast<int>(std::min<size_t>(n, 48));
+    const double tol = 1e-9 * std::max(1.0, scale);
+    std::vector<std::vector<double>> V;
+    std::vector<double> w(n), alpha, beta, T, evals, Q;
+    double theta = 0.0;
+    long long matvecs = 0;
+    for (int restart = 0; restart < 400 && matvecs < 40000; ++restart) {
+        V.assign(1, x);
+        alpha.clear();
+        beta.clear();
+        bool invariant = false;
+        for (int j = 0; j < m; ++j) {
+            op(V[j], w);
+            ++matvecs;
+            const double a = dot(V[j], w);
+            alpha.push_back(a);
+            if (j + 1 == m) break;
+            for (size_t i = 0; i < n; ++i) w[i] -= a * V[j][i] + (j > 0 ? beta[j - 1] * V[j - 1][i] : 0.0);
+            for (int pass = 0; pass < 2; ++pass)  // full reorthogonalisation
+                for (const auto& v : V) {
+                    const double h = dot(v, w);
+                    for (size_t i = 0; i < n; ++i) w[i] -= h * v[i];
+                }
+            const double b = std::sqrt(dot(w, w));
+            if (b <= 1e-12 * std::max(1.0, scale)) {
+                invariant = true;
+                break;
+            }
+            beta.push_back(b);
+            for (double& t : w) t /= b;
+            V.push_back(w);
+        }
+        const int k = static_cast<int>(alpha.size());
+        T.assign(static_cast<size_t>(k) * k, 0.0);
+        for (int i = 0; i < k; ++i) {
+            T[static_cast<size_t>(i) * k + i] = alpha[i];
+            if (i + 1 < k) T[static_cast<size_t>(i) * k + i + 1] = T[static_cast<size_t>(i + 1) * k + i] = beta[i];
+        }
+        jacobi_eigen(T, k, evals, Q);
+        int best = 0;
+        for (int i = 1; i < k; ++i)
+            if (evals[i] > evals[best]) best = i;
+        theta = evals[best];
+        std::fill(x.begin(), x.end(), 0.0);
+        for (int j = 0; j < k; ++j) {
+            const double y = Q[static_cast<size_t>(j) * k + best];
+            for (size_t i = 0; i < n; ++i) x[i] += y * V[j][i];
+        }
+        normalize(x);
+        if (invariant) break;
+        // residual estimate |beta_k * y_k| of the Ritz pair
+        op(x, w);
+        ++matvecs;
+        double r = 0.0;
+        for (size_t i = 0; i < n; ++i) r += (w[i] - theta * x[i]) * (w[i] - theta * x[i]);
+        if (std::sqrt(r) <= tol) break;
+    }
+    return theta;
+}
+
 // Split `members`; returns true and fills `side` (+1/-1) if a split increases Q.
 bool newman_split(const NewmanCtx& c, const std::vector<std::uint32_t>& members, std::vector<int>& pos,
                   std::vector<signed char>& side) {
@@ -474,30 +600,12 @@ bool newman_split(const NewmanCtx& c, const std::vector<std::uint32_t>& members,
         diag[a] = kin - c.k[i] * kg / c.two_m;
         bound = std::max(bound, 2.0 * (kin + c.k[i] * kg / c.two_m));
     }
-    // power iteration on B + shift*I (shift >= spectral radius) -> largest
-    // algebraic eigenvalue of B^(g)
-    const double shift = bound + 1e-9;
-    std::vector<double> x(ng), y(ng);
-    for (size_t a = 0; a < ng; ++a) x[a] = 1.0 + 0.1 * std::sin(1.0 + a);  // deterministic, not orthogonal
-    double nrm = 0;
-    for (double v : x) nrm += v * v;
-    nrm = std::sqrt(nrm);
-    for (double& v : x) v /= nrm;
-    double lambda = 0.0, prev = std::numeric_limits<double>::infinity();
-    for (int it = 0; it < 20000; ++it) {
-        apply_bg(c, members, pos, diag, x, y);
-        double rq = 0.0;
-        for (size_t a = 0; a < ng; ++a) { rq += x[a] * y[a]; y[a] += shift * x[a]; }
-        double ny = 0.0;
-        for (double v : y) ny += v * v;
-        ny = std::sqrt(ny);
-        if (ny == 0) break;
-        double diff = 0.0;
-        for (size_t a = 0; a < ng; ++a) { double v = y[a] / ny; diff = std::max(diff, std::fabs(v - x[a])); x[a] = v; }
-        lambda = rq;
-        if (diff < 1e-9 || std::fabs(rq - prev) < 1e-12 * std::max(1.0, std::fabs(rq))) break;
-        prev = rq;
-    }
+    // leading (largest algebraic) eigenpair of B^(g) by restarted Lanczos
+    std::vector<double> x(ng);
+    for (size_t a = 0; a < ng; ++a) x[a] = 1.0 + 0.1 * std::sin(1.0 + a);  // deterministic start
+    const double lambda = leading_eigenpair(
+        ng, [&](const std::vector<double>& in, std::vector<double>& out) { apply_bg(c, members, pos, diag, in, out); },
+        x, bound);
     bool ok = false;
     if (lambda > 1e-8) {
         side.assign(ng, 1);

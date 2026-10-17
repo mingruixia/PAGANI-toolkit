@@ -53,6 +53,12 @@ with a 2.1 result folder file by file.
 - The `BNA_time_log` file is no longer written; run times are printed instead.
 - `BC_CPU` (an unmaintained CPU duplicate of `CUBC`) was removed; `CUBC`
   computes betweenness of unweighted networks as before.
+- Newman modularity: the leading eigenvector of each split is computed with
+  the Lanczos method (fully converged) instead of a power iteration that often
+  stopped at its iteration limit; module partitions can differ slightly from
+  2.0 and the tools are many times faster.
+- Multi-threaded tools reuse a thread pool, which removes a large overhead on
+  Windows (most visible for the Newman tools).
 - Every program returns a non-zero exit code on failure, prints the reason, and
   never waits for a key press, so scripts and the GUI stop at the first error.
 - Memory needs are checked: when the data do not fit in GPU memory the
