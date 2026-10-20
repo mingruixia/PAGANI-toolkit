@@ -35,8 +35,16 @@
   than in 2.1.0 (on test networks Q was equal or slightly higher). Weighted
   results are unchanged.
 - `CUBC`: the BFS levels of each source are kept in GPU shared memory
-  (networks with up to about 24,000 nodes, or more on GPUs with more shared
-  memory; larger networks use the previous kernel). Results are unchanged.
+  (networks with up to about 24,000 nodes on GTX 10-series GPUs and about
+  50,000 on RTX 20/30/40-series GPUs; larger networks use the previous
+  kernel). Results are unchanged.
+- Sparsity thresholds: a provisional threshold is estimated from about 2,048
+  sampled rows of the correlation matrix, so that the exact histogram and the
+  candidate edges are collected in one pass over the matrix instead of two (a
+  second pass is made only if the estimate was too high). Results are
+  unchanged.
+- Kendall networks: the sign vectors are multiplied as 8-bit integers with the
+  GPU's 4-way integer dot product (exact) instead of 32-bit floats.
 
 ## 2.1.0 — 2026-10-17 (maintenance release)
 

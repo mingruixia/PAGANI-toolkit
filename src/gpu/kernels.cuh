@@ -24,6 +24,13 @@ __global__ void gemm_tn_kernel(int K, const float* __restrict__ A, int lda, cons
 
 void gemm_tn(int M, int N, int K, const float* A, int lda, const float* B, int ldb, float beta, float* C, int ldc);
 
+// Same for int8 operands (values -1, 0, 1 of the Kendall sign vectors) with
+// 4-way integer dot products (__dp4a, exact): A and B hold K signed bytes per
+// column (K a multiple of 4, lda/ldb in bytes, multiples of 4);
+// C(a, b) = beta * C(a, b) + (float) sum_k A * B.
+void gemm_tn_s8(int M, int N, int K, const signed char* A, int lda, const signed char* B, int ldb, float beta,
+                float* C, int ldc);
+
 // y = A x for a CSR matrix (one warp per row).
 void csr_spmv(int n, const unsigned* R, const unsigned* C, const float* V, const float* x, float* y);
 void csr_spmv(int n, const unsigned* R, const unsigned* C, const double* V, const double* x, double* y);

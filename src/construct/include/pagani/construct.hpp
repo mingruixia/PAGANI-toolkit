@@ -9,8 +9,11 @@
 //                               with the largest r, M = N (N - 1) / 2; ties at
 //                               the K-th value are broken by (i, j) order.
 //
-// The sparsity threshold is found exactly with a histogram pass followed by an
-// extraction pass, so no N x N matrix is needed (high-resolution networks).
+// The sparsity threshold is found exactly from a histogram of all values, so no
+// N x N matrix is needed (high-resolution networks).  A histogram of a sample
+// of rows gives a provisional threshold, so that the histogram and the
+// candidate edges are collected in one pass; a second (extraction) pass is
+// needed only if the provisional threshold was too high.
 #pragma once
 
 #include <cstdint>
@@ -49,7 +52,23 @@ public:
     virtual std::vector<std::uint64_t> histogram() = 0;
     // All pairs with r >= threshold, in any order.
     virtual std::vector<WeightedEdge> extract(float threshold) = 0;
+    // Histogram (kHistBins) of the values of some rows spread over the matrix
+    // (empty if not supported).
+    virtual std::vector<std::uint64_t> sample_histogram() { return {}; }
+    // histogram() and extract(threshold) in one pass.  Returns false (edges
+    // cleared) if more than max_edges pairs have r >= threshold.
+    virtual bool histogram_and_extract(float threshold, std::uint64_t max_edges, std::vector<std::uint64_t>& hist,
+                                       std::vector<WeightedEdge>& edges) {
+        hist = histogram();
+        edges = extract(threshold);
+        if (edges.size() <= max_edges) return true;
+        std::vector<WeightedEdge>().swap(edges);
+        return false;
+    }
 };
+
+// Rows used by sample_histogram(): about 2048 rows evenly spread over [0, n).
+std::vector<std::uint32_t> sample_rows(std::uint32_t n);
 
 // Correlation backend.  `series` is voxel-major: series[v * L + t].
 class CorrelationBackend : public EdgeSource {

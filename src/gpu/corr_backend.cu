@@ -1,5 +1,5 @@
-// CUDA correlation backend (Pearson / Spearman via cuBLAS SGEMM, Kendall tau-b
-// via SGEMM on pairwise sign vectors).
+// CUDA correlation backend (Pearson / Spearman: GEMM of standardised series;
+// Kendall tau-b: int8 GEMM with __dp4a on the pairwise sign vectors).
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -39,6 +39,22 @@ __global__ void hist_kernel(const float* __restrict__ C, int B, long long i0, lo
     }
 }
 
+// C[a + b*ldc] = value(rows[a], j0 + b) for the sampled rows a < S
+__global__ void sample_hist_kernel(const float* __restrict__ C, int ldc, int S, int B, const unsigned* __restrict__ rows,
+                                   long long j0, long long n, unsigned int* __restrict__ hist) {
+    const long long total = static_cast<long long>(ldc) * B;
+    for (long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x; idx < total;
+         idx += static_cast<long long>(gridDim.x) * blockDim.x) {
+        const long long a = idx % ldc, j = j0 + idx / ldc;
+        if (a < S && j < n && j != rows[a]) {
+            float x = (C[idx] + 1.0f) * (0.5f * kHistBins);
+            int bin = static_cast<int>(x);
+            bin = bin < 0 ? 0 : (bin >= kHistBins ? kHistBins - 1 : bin);
+            atomicAdd(&hist[bin], 1u);
+        }
+    }
+}
+
 __global__ void extract_kernel(const float* __restrict__ C, int B, long long i0, long long j0, long long n,
                                float thr, DevEdge* __restrict__ out, unsigned long long* __restrict__ count) {
     const long long total = static_cast<long long>(B) * B;
@@ -70,18 +86,18 @@ __global__ void kendall_ties_kernel(const float* __restrict__ raw, int n0, int L
 
 // S[p + v*Pc] = sign(x_v[a_p] - x_v[b_p]) for pairs p0..p0+Pc-1 (0 beyond P)
 __global__ void kendall_sign_kernel(const float* __restrict__ raw, int L, int nb, const uint2* __restrict__ pairs,
-                                    long long p0, int Pc, long long P, float* __restrict__ S) {
+                                    long long p0, int Pc, long long P, signed char* __restrict__ S) {
     const long long total = static_cast<long long>(Pc) * nb;
     for (long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x; idx < total;
          idx += static_cast<long long>(gridDim.x) * blockDim.x) {
         const long long p = idx % Pc, v = idx / Pc;
         const long long gp = p0 + p;
-        float s = 0.0f;
+        signed char s = 0;
         if (gp < P) {
             const uint2 ab = pairs[gp];
             const float* x = raw + v * L;
-            float d = x[ab.x] - x[ab.y];
-            s = (d > 0.0f) ? 1.0f : ((d < 0.0f) ? -1.0f : 0.0f);
+            const float a = x[ab.x], b = x[ab.y];
+            s = static_cast<signed char>((a > b) - (a < b));
         }
         S[idx] = s;
     }
@@ -163,7 +179,8 @@ public:
                 for (unsigned b = a + 1; b < l; ++b) pairs[k++] = make_uint2(a, b);
             pairs_.resize(pairs.size());
             PAGANI_CUDA(cudaMemcpy(pairs_.get(), pairs.data(), pairs.size() * sizeof(uint2), cudaMemcpyHostToDevice));
-            Pc_ = static_cast<int>(std::min<long long>((P_ + 15) / 16 * 16, std::max<long long>(1024, (256ll << 20) / (4ll * B_) / 16 * 16)));
+            // int8 sign vectors: 64 bytes per GEMM stage, ~256 MB per buffer
+            Pc_ = static_cast<int>(std::min<long long>((P_ + 63) / 64 * 64, std::max<long long>(1024, (256ll << 20) / B_ / 64 * 64)));
             S1_.resize(static_cast<size_t>(Pc_) * B_);
             S2_.resize(static_cast<size_t>(Pc_) * B_);
         }
@@ -202,6 +219,70 @@ public:
             }
         });
         return out;
+    }
+
+    std::vector<std::uint64_t> sample_histogram() override {
+        if (type_ == CorrType::Kendall) return {};
+        const auto rows = sample_rows(n_);
+        const int S = static_cast<int>(rows.size());
+        const int Sp = (S + gpu::kTile - 1) / gpu::kTile * gpu::kTile;
+        std::vector<float> hs(static_cast<size_t>(Sp) * l_, 0.0f);
+        for (int k = 0; k < S; ++k)
+            std::copy_n(host_.data() + static_cast<size_t>(rows[k]) * l_, l_, hs.data() + static_cast<size_t>(k) * l_);
+        DeviceBuffer<float> ds(hs.size()), cs(static_cast<size_t>(Sp) * B_);
+        DeviceBuffer<unsigned> drows(S);
+        DeviceBuffer<unsigned int> dh(kHistBins);
+        PAGANI_CUDA(cudaMemcpy(ds.get(), hs.data(), hs.size() * sizeof(float), cudaMemcpyHostToDevice));
+        PAGANI_CUDA(cudaMemcpy(drows.get(), rows.data(), S * sizeof(unsigned), cudaMemcpyHostToDevice));
+        std::vector<std::uint64_t> hist(kHistBins, 0);
+        std::vector<unsigned int> part(kHistBins);
+        cached1_ = cached2_ = -1;
+        for (int bj = 0; bj < nb_; ++bj) {
+            gpu::gemm_tn(Sp, B_, l_, ds.get(), l_, slice(bj, 1), l_, 0.0f, cs.get(), Sp);
+            PAGANI_CUDA(cudaMemset(dh.get(), 0, kHistBins * sizeof(unsigned int)));
+            sample_hist_kernel<<<cuda::grid_for(cs.size()), 256>>>(cs.get(), Sp, S, B_, drows.get(), 1ll * bj * B_, n_,
+                                                                   dh.get());
+            PAGANI_KERNEL_CHECK();
+            PAGANI_CUDA(cudaMemcpy(part.data(), dh.get(), kHistBins * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+            for (int b = 0; b < kHistBins; ++b) hist[b] += part[b];
+        }
+        return hist;
+    }
+
+    bool histogram_and_extract(float threshold, std::uint64_t max_edges, std::vector<std::uint64_t>& hist,
+                               std::vector<WeightedEdge>& out) override {
+        DeviceBuffer<unsigned int> dh(kHistBins);
+        DeviceBuffer<DevEdge> de(C_.size());
+        DeviceBuffer<unsigned long long> dc(1);
+        hist.assign(kHistBins, 0);
+        std::vector<unsigned int> part(kHistBins);
+        out.clear();
+        bool ok = true;
+        for_each_block([&](int bi, int bj) {
+            PAGANI_CUDA(cudaMemset(dh.get(), 0, kHistBins * sizeof(unsigned int)));
+            hist_kernel<<<cuda::grid_for(C_.size()), 256>>>(C_.get(), B_, 1ll * bi * B_, 1ll * bj * B_, n_, dh.get());
+            PAGANI_KERNEL_CHECK();
+            PAGANI_CUDA(cudaMemcpy(part.data(), dh.get(), kHistBins * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+            for (int b = 0; b < kHistBins; ++b) hist[b] += part[b];
+            if (!ok) return;
+            PAGANI_CUDA(cudaMemset(dc.get(), 0, sizeof(unsigned long long)));
+            extract_kernel<<<cuda::grid_for(C_.size()), 256>>>(C_.get(), B_, 1ll * bi * B_, 1ll * bj * B_, n_, threshold,
+                                                                de.get(), dc.get());
+            PAGANI_KERNEL_CHECK();
+            unsigned long long cnt = 0;
+            PAGANI_CUDA(cudaMemcpy(&cnt, dc.get(), sizeof(cnt), cudaMemcpyDeviceToHost));
+            if (out.size() + cnt > max_edges) {
+                ok = false;
+                std::vector<WeightedEdge>().swap(out);
+                return;
+            }
+            if (cnt) {
+                size_t old = out.size();
+                out.resize(old + cnt);
+                PAGANI_CUDA(cudaMemcpy(out.data() + old, de.get(), cnt * sizeof(DevEdge), cudaMemcpyDeviceToHost));
+            }
+        });
+        return ok;
     }
 
     void packed(float* out, Accumulate mode) override {
@@ -269,7 +350,8 @@ private:
             kendall_sign_kernel<<<cuda::grid_for(static_cast<size_t>(Pc_) * B_), 256>>>(A, l_, B_, pairs_.get(), p0, Pc_, P_, S1_.get());
             kendall_sign_kernel<<<cuda::grid_for(static_cast<size_t>(Pc_) * B_), 256>>>(Bm, l_, B_, pairs_.get(), p0, Pc_, P_, S2_.get());
             PAGANI_KERNEL_CHECK();
-            gpu::gemm_tn(B_, B_, Pc_, S1_.get(), Pc_, S2_.get(), Pc_, p0 == 0 ? 0.0f : 1.0f, C_.get(), B_);
+            // exact: integer sums, converted to float (exact below 2^24 = L(L-1)/2 for L < 5793)
+            gpu::gemm_tn_s8(B_, B_, Pc_, S1_.get(), Pc_, S2_.get(), Pc_, p0 == 0 ? 0.0f : 1.0f, C_.get(), B_);
         }
         const double n0 = static_cast<double>(P_);
         kendall_normalize_kernel<<<cuda::grid_for(C_.size()), 256>>>(C_.get(), B_, ties_.get() + 1ll * bi * B_,
@@ -306,7 +388,8 @@ private:
     DeviceBuffer<float> data_, slice1_, slice2_, C_;
     int cached1_ = -1, cached2_ = -1;
     // Kendall
-    DeviceBuffer<float> ties_, S1_, S2_;
+    DeviceBuffer<float> ties_;
+    DeviceBuffer<signed char> S1_, S2_;
     DeviceBuffer<uint2> pairs_;
     long long P_ = 0;
     int Pc_ = 0;

@@ -113,6 +113,28 @@ def test_kendall_blocks(tmp_path, mode):
                         tol=1e-5)
 
 
+def test_sparsity_misleading_sample(tmp_path):
+    """The sparsity threshold is first guessed from ~2048 sampled rows (every
+    second voxel here). Those voxels share a signal, so the guess is too high
+    and the edges must be extracted in a second pass; the network is exact."""
+    shape, L = (16, 16, 16), 40
+    rng = np.random.default_rng(5)
+    nvox = int(np.prod(shape))
+    X = rng.standard_normal((nvox, L))
+    X[::2] += 1.5 * rng.standard_normal(L)
+    X = X.astype(np.float32)
+    d = tmp_path / "data"
+    d.mkdir()
+    R.save_nifti(d / "s0.nii", X.reshape(shape + (L,), order="F"))
+    mask = tmp_path / "mask.nii"
+    R.save_nifti(mask, np.ones(shape, np.float32))
+    cp = run("CUCorMat", False, d, mask, 0.5, "n", "n", "s", 40, 2)
+    assert "second pass" in cp.stdout
+    C = corr(X.astype(float))
+    for s in (40, 2):
+        check_s_network(find(d / "unweighted", f"s0_{nvox}_spa{s:.3f}%*.csr"), C, s, False)
+
+
 def lp_tool():
     return "CUBFW_Lp" if GPU else "BFS_MulCPU"
 
