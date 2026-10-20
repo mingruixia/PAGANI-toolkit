@@ -94,6 +94,23 @@ def main():
         dt, cp = timed([exe(a.pkg, False, "CUCorMatHr"), syn, mask, 0.5, "n", "s", "s", 0.1], log)
         note("CUCorMatHr Spearman sparsity 0.1%", dt)
     shutil.rmtree(syn, ignore_errors=True)
+    if not a.skip_construct:
+        # Kendall: smaller data (cost ~ N^2 L^2)
+        kd = work / "kendall"
+        shutil.rmtree(kd, ignore_errors=True)
+        kd.mkdir()
+        nk, lk = 20000, 150
+        kz = (nk + nx * ny - 1) // (nx * ny)
+        vol = rng.standard_normal((nx, ny, kz, lk), dtype=np.float32)
+        vol += rng.standard_normal((1, 1, 1, lk), dtype=np.float32)
+        R.save_nifti(kd / "k1.nii", vol)
+        del vol
+        flat = np.zeros(nx * ny * kz, np.float32)
+        flat[:nk] = 1
+        R.save_nifti(work / "kendall_mask.nii", flat.reshape((nx, ny, kz), order="F"))
+        dt, cp = timed([exe(a.pkg, True, "CuCorMat-sca-kendall"), kd, work / "kendall_mask.nii", 0.5, "n", "s", 0.1], log)
+        note(f"Kendall N={nk} L={lk}, sparsity 0.1%", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
+        shutil.rmtree(kd, ignore_errors=True)
 
     # ---- path length on a large synthetic weighted network (Floyd-Warshall scaling)
     import scipy.sparse as sp
