@@ -499,9 +499,13 @@ void jacobi_eigen(std::vector<double>& A, int n, std::vector<double>& w, std::ve
 }
 
 // Largest algebraic eigenvalue and its unit eigenvector of a symmetric
-// operator (n x n), by Lanczos with full reorthogonalisation and explicit
-// restarts. `x` holds the start vector and receives the eigenvector.
-// `scale` is a bound of the spectral radius (for the tolerances).
+// operator (n x n), by thick-restart Lanczos (Wu & Simon 2000) with full
+// reorthogonalisation: the basis holds at most m = 48 vectors; at a restart
+// the 24 leading Ritz vectors and the last residual direction are kept, so
+// nearly degenerate leading eigenvalues (groups that are not split further)
+// converge in far fewer products than with a restart from one vector.
+// `x` holds the start vector and receives the eigenvector.  `scale` is a
+// bound of the spectral radius (for the tolerances).
 double leading_eigenpair(size_t n, const std::function<void(const std::vector<double>&, std::vector<double>&)>& op,
                          std::vector<double>& x, double scale) {
     auto dot = [&](const std::vector<double>& a, const std::vector<double>& b) {
@@ -523,47 +527,48 @@ double leading_eigenpair(size_t n, const std::function<void(const std::vector<do
     }
     normalize(x);
     const int m = static_cast<int>(std::min<size_t>(n, 48));
+    const int keep = std::max(1, m / 2);
     const double tol = 1e-9 * std::max(1.0, scale);
-    std::vector<std::vector<double>> V;
-    std::vector<double> w(n), alpha, beta, T, evals, Q;
+    std::vector<std::vector<double>> V(1, x);   // orthonormal basis
+    std::vector<double> H;                        // m x m projection V^T A V (row major)
+    std::vector<double> w(n), h, evals, Q;
+    int cur = 0;                                  // columns of H already known
     double theta = 0.0;
     long long matvecs = 0;
     for (int restart = 0; restart < 400 && matvecs < 40000; ++restart) {
-        V.assign(1, x);
-        alpha.clear();
-        beta.clear();
+        H.resize(static_cast<size_t>(m) * m);
         bool invariant = false;
-        for (int j = 0; j < m; ++j) {
+        double beta = 0.0;
+        int k = cur;
+        for (int j = cur; j < m; ++j) {
             op(V[j], w);
             ++matvecs;
-            const double a = dot(V[j], w);
-            alpha.push_back(a);
-            if (j + 1 == m) break;
-            for (size_t i = 0; i < n; ++i) w[i] -= a * V[j][i] + (j > 0 ? beta[j - 1] * V[j - 1][i] : 0.0);
+            h.assign(j + 1, 0.0);
             for (int pass = 0; pass < 2; ++pass)  // full reorthogonalisation
-                for (const auto& v : V) {
-                    const double h = dot(v, w);
-                    for (size_t i = 0; i < n; ++i) w[i] -= h * v[i];
+                for (int i = 0; i <= j; ++i) {
+                    const double c = dot(V[i], w);
+                    h[i] += c;
+                    for (size_t t = 0; t < n; ++t) w[t] -= c * V[i][t];
                 }
-            const double b = std::sqrt(dot(w, w));
-            if (b <= 1e-12 * std::max(1.0, scale)) {
-                invariant = true;
-                break;
+            for (int i = 0; i <= j; ++i) H[static_cast<size_t>(i) * m + j] = H[static_cast<size_t>(j) * m + i] = h[i];
+            k = j + 1;
+            beta = std::sqrt(dot(w, w));
+            if (beta <= 1e-12 * std::max(1.0, scale)) { invariant = true; break; }
+            for (double& t : w) t /= beta;
+            if (j + 1 < m) {
+                V.push_back(w);
+                H[static_cast<size_t>(j + 1) * m + j] = H[static_cast<size_t>(j) * m + j + 1] = beta;
             }
-            beta.push_back(b);
-            for (double& t : w) t /= b;
-            V.push_back(w);
         }
-        const int k = static_cast<int>(alpha.size());
-        T.assign(static_cast<size_t>(k) * k, 0.0);
-        for (int i = 0; i < k; ++i) {
-            T[static_cast<size_t>(i) * k + i] = alpha[i];
-            if (i + 1 < k) T[static_cast<size_t>(i) * k + i + 1] = T[static_cast<size_t>(i + 1) * k + i] = beta[i];
-        }
+        // Rayleigh-Ritz on the k x k projection
+        std::vector<double> T(static_cast<size_t>(k) * k);
+        for (int i = 0; i < k; ++i)
+            for (int j = 0; j < k; ++j) T[static_cast<size_t>(i) * k + j] = H[static_cast<size_t>(i) * m + j];
         jacobi_eigen(T, k, evals, Q);
-        int best = 0;
-        for (int i = 1; i < k; ++i)
-            if (evals[i] > evals[best]) best = i;
+        std::vector<int> order(k);
+        for (int i = 0; i < k; ++i) order[i] = i;
+        std::sort(order.begin(), order.end(), [&](int a, int b) { return evals[a] > evals[b]; });
+        const int best = order[0];
         theta = evals[best];
         std::fill(x.begin(), x.end(), 0.0);
         for (int j = 0; j < k; ++j) {
@@ -572,12 +577,35 @@ double leading_eigenpair(size_t n, const std::function<void(const std::vector<do
         }
         normalize(x);
         if (invariant) break;
-        // residual estimate |beta_k * y_k| of the Ritz pair
-        op(x, w);
-        ++matvecs;
-        double r = 0.0;
-        for (size_t i = 0; i < n; ++i) r += (w[i] - theta * x[i]) * (w[i] - theta * x[i]);
-        if (std::sqrt(r) <= tol) break;
+        // residual |A x - theta x| = beta |y_last| (checked with a product when small)
+        if (beta * std::fabs(Q[static_cast<size_t>(k - 1) * k + best]) <= 10.0 * tol) {
+            std::vector<double> ax(n);
+            op(x, ax);
+            ++matvecs;
+            double r = 0.0;
+            for (size_t i = 0; i < n; ++i) r += (ax[i] - theta * x[i]) * (ax[i] - theta * x[i]);
+            if (std::sqrt(r) <= tol) break;
+        }
+        // thick restart: leading Ritz vectors + the residual direction w
+        const int kk = std::min(keep, k);
+        std::vector<std::vector<double>> NV(kk + 1, std::vector<double>(n, 0.0));
+        for (int c = 0; c < kk; ++c) {
+            const int e = order[c];
+            for (int j = 0; j < k; ++j) {
+                const double y = Q[static_cast<size_t>(j) * k + e];
+                for (size_t i = 0; i < n; ++i) NV[c][i] += y * V[j][i];
+            }
+        }
+        NV[kk] = w;  // residual direction (unit, orthogonal to V)
+        std::fill(H.begin(), H.end(), 0.0);
+        for (int c = 0; c < kk; ++c) {
+            H[static_cast<size_t>(c) * m + c] = evals[order[c]];
+            // coupling of Ritz vector c with the residual direction: beta * y_last
+            const double cpl = beta * Q[static_cast<size_t>(k - 1) * k + order[c]];
+            H[static_cast<size_t>(c) * m + kk] = H[static_cast<size_t>(kk) * m + c] = cpl;
+        }
+        V.swap(NV);
+        cur = kk;  // column kk (the residual direction) is expanded next
     }
     return theta;
 }

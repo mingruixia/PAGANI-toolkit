@@ -43,8 +43,6 @@ def main():
     ap.add_argument("--n", type=int, default=60000)
     ap.add_argument("--l", type=int, default=1200)
     ap.add_argument("--fw-sizes", type=int, nargs="*", default=[20000, 40000])
-    ap.add_argument("--fw-variants", type=int, nargs="*", default=[],
-                    help="also time these PAGANI_FW_VARIANT kernels (weighted Floyd-Warshall)")
     ap.add_argument("--skip-construct", action="store_true")
     a = ap.parse_args()
     work = Path(a.work)
@@ -133,15 +131,6 @@ def main():
             kind = "weighted" if weighted else "unweighted"
             dt, cp = timed([exe(a.pkg, weighted, "CUBFW_Lp"), dd, 0, "gn"], log)
             note(f"CUBFW_Lp synthetic {kind} n={nn} (1% density)", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
-            if weighted and a.fw_variants:
-                ref = {p.name: p.read_bytes() for p in dd.glob("*_eff.nm")}
-                for v in a.fw_variants:
-                    for p in dd.glob("*_eff.nm"):
-                        p.unlink()
-                    dt, cp = timed([exe(a.pkg, True, "CUBFW_Lp"), dd, 0, "gn"], log, {"PAGANI_FW_VARIANT": str(v)})
-                    same = {p.name: p.read_bytes() for p in dd.glob("*_eff.nm")} == ref
-                    note(f"  FW kernel variant {v}, n={nn}", dt,
-                         ("identical" if same else "DIFFERENT") if cp.returncode == 0 else f"exit {cp.returncode}")
             if not weighted and nn <= 20000:
                 dt, cp = timed([exe(a.pkg, False, "CUBC"), dd], log)
                 note(f"CUBC synthetic n={nn} (1% density)", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
