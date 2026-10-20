@@ -35,6 +35,49 @@ def timed(cmd, log, env=None):
     return dt, cp
 
 
+def construct_benchmarks(a, work, rng, log, note):
+    """Correlation engine on synthetic data."""
+    syn = work / "syn"
+    if syn.exists():
+        shutil.rmtree(syn)
+    syn.mkdir()
+    nx, ny = 60, 50
+    nz = (a.n + nx * ny - 1) // (nx * ny)
+    vol = rng.standard_normal((nx, ny, nz, a.l), dtype=np.float32)
+    vol += rng.standard_normal((1, 1, 1, a.l), dtype=np.float32)  # some shared signal
+    R.save_nifti(syn / "s1.nii", vol)
+    del vol
+    mask = work / "syn_mask.nii"
+    flat = np.zeros(nx * ny * nz, np.float32)
+    flat[: a.n] = 1
+    R.save_nifti(mask, flat.reshape((nx, ny, nz), order="F"))
+    for label, args in [("CUCorMat N=%d L=%d, r > 0.9 (1 pass)" % (a.n, a.l), ["n", "n", "r", 0.9]),
+                        ("CUCorMat N=%d L=%d, sparsity 0.1%% (2 passes)" % (a.n, a.l), ["n", "n", "s", 0.1])]:
+        dt, cp = timed([exe(a.pkg, False, "CUCorMat"), syn, mask, 0.5, *args], log)
+        m_ = re.search(r"done in ([0-9.e+-]+) s", cp.stdout)
+        note(label, dt, f"(tool: {m_.group(1) if m_ else '?'} s)")
+        shutil.rmtree(syn / "unweighted", ignore_errors=True)
+    dt, cp = timed([exe(a.pkg, False, "CUCorMatHr"), syn, mask, 0.5, "n", "s", "s", 0.1], log)
+    note("CUCorMatHr Spearman sparsity 0.1%", dt)
+    shutil.rmtree(syn, ignore_errors=True)
+    # Kendall: smaller data (cost ~ N^2 L^2)
+    kd = work / "kendall"
+    shutil.rmtree(kd, ignore_errors=True)
+    kd.mkdir()
+    nk, lk = 20000, 150
+    kz = (nk + nx * ny - 1) // (nx * ny)
+    vol = rng.standard_normal((nx, ny, kz, lk), dtype=np.float32)
+    vol += rng.standard_normal((1, 1, 1, lk), dtype=np.float32)
+    R.save_nifti(kd / "k1.nii", vol)
+    del vol
+    flat = np.zeros(nx * ny * kz, np.float32)
+    flat[:nk] = 1
+    R.save_nifti(work / "kendall_mask.nii", flat.reshape((nx, ny, kz), order="F"))
+    dt, cp = timed([exe(a.pkg, True, "CuCorMat-sca-kendall"), kd, work / "kendall_mask.nii", 0.5, "n", "s", 0.1], log)
+    note(f"Kendall N={nk} L={lk}, sparsity 0.1%", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
+    shutil.rmtree(kd, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pkg", required=True)
@@ -64,51 +107,9 @@ def main():
     except OSError:
         pass
 
-    # ---- correlation engine on synthetic data
-    syn = work / "syn"
-    if a.skip_construct:
-        a.n = 0
-    if syn.exists():
-        shutil.rmtree(syn)
-    syn.mkdir()
-    nx, ny = 60, 50
-    nz = (a.n + nx * ny - 1) // (nx * ny)
     rng = np.random.default_rng(0)
-    vol = rng.standard_normal((nx, ny, nz, a.l), dtype=np.float32)
-    vol += rng.standard_normal((1, 1, 1, a.l), dtype=np.float32)  # some shared signal
-    R.save_nifti(syn / "s1.nii", vol)
-    del vol
-    mask = work / "syn_mask.nii"
-    flat = np.zeros(nx * ny * nz, np.float32)
-    flat[: a.n] = 1
-    R.save_nifti(mask, flat.reshape((nx, ny, nz), order="F"))
-    for label, args in ([] if a.skip_construct else [("CUCorMat N=%d L=%d, r > 0.9 (1 pass)" % (a.n, a.l), ["n", "n", "r", 0.9]),
-                        ("CUCorMat N=%d L=%d, sparsity 0.1%% (2 passes)" % (a.n, a.l), ["n", "n", "s", 0.1])]):
-        dt, cp = timed([exe(a.pkg, False, "CUCorMat"), syn, mask, 0.5, *args], log)
-        m_ = re.search(r"done in ([0-9.e+-]+) s", cp.stdout)
-        note(label, dt, f"(tool: {m_.group(1) if m_ else '?'} s)")
-        shutil.rmtree(syn / "unweighted", ignore_errors=True)
     if not a.skip_construct:
-        dt, cp = timed([exe(a.pkg, False, "CUCorMatHr"), syn, mask, 0.5, "n", "s", "s", 0.1], log)
-        note("CUCorMatHr Spearman sparsity 0.1%", dt)
-    shutil.rmtree(syn, ignore_errors=True)
-    if not a.skip_construct:
-        # Kendall: smaller data (cost ~ N^2 L^2)
-        kd = work / "kendall"
-        shutil.rmtree(kd, ignore_errors=True)
-        kd.mkdir()
-        nk, lk = 20000, 150
-        kz = (nk + nx * ny - 1) // (nx * ny)
-        vol = rng.standard_normal((nx, ny, kz, lk), dtype=np.float32)
-        vol += rng.standard_normal((1, 1, 1, lk), dtype=np.float32)
-        R.save_nifti(kd / "k1.nii", vol)
-        del vol
-        flat = np.zeros(nx * ny * kz, np.float32)
-        flat[:nk] = 1
-        R.save_nifti(work / "kendall_mask.nii", flat.reshape((nx, ny, kz), order="F"))
-        dt, cp = timed([exe(a.pkg, True, "CuCorMat-sca-kendall"), kd, work / "kendall_mask.nii", 0.5, "n", "s", 0.1], log)
-        note(f"Kendall N={nk} L={lk}, sparsity 0.1%", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
-        shutil.rmtree(kd, ignore_errors=True)
+        construct_benchmarks(a, work, rng, log, note)
 
     # ---- path length on a large synthetic weighted network (Floyd-Warshall scaling)
     import scipy.sparse as sp
