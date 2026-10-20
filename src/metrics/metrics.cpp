@@ -425,21 +425,16 @@ double wgt(const NewmanCtx& c, std::uint32_t e) { return c.weighted ? c.g.V[e] :
 
 // y = B^(g) x restricted to `members` (x and y are indexed by position in
 // members).  `inmask[node]` gives position+1 for members, 0 otherwise.
-void apply_bg(const NewmanCtx& c, const std::vector<std::uint32_t>& members, const std::vector<int>& pos,
-              const std::vector<double>& diag, const std::vector<double>& x, std::vector<double>& y) {
+void apply_a(const NewmanCtx& c, const std::vector<std::uint32_t>& members, const std::vector<int>& pos,
+             const std::vector<double>& x, std::vector<double>& y) {
     const size_t ng = members.size();
-    double kx = 0.0;
-    for (size_t a = 0; a < ng; ++a) kx += c.k[members[a]] * x[a];
     if (c.spmv && ng >= 4096) {
         // A x for the members via a full-size product (GPU)
         thread_local std::vector<double> xf, yf;
         xf.assign(c.g.n, 0.0);
         for (size_t a = 0; a < ng; ++a) xf[members[a]] = x[a];
         c.spmv(xf, yf);
-        for (size_t a = 0; a < ng; ++a) {
-            const std::uint32_t i = members[a];
-            y[a] = yf[i] - c.k[i] * kx / c.two_m - diag[a] * x[a];
-        }
+        for (size_t a = 0; a < ng; ++a) y[a] = yf[members[a]];
         return;
     }
     parallel_for(0, static_cast<long long>(ng), [&](long long a, unsigned) {
@@ -449,10 +444,17 @@ void apply_bg(const NewmanCtx& c, const std::vector<std::uint32_t>& members, con
             int b = pos[c.g.C[e]];
             if (b > 0) s += wgt(c, e) * x[b - 1];
         }
-        s -= c.k[i] * kx / c.two_m;
-        s -= diag[a] * x[a];
         y[a] = s;
     }, ng < 2048 ? 1u : 0u);  // small groups: threading overhead exceeds the work
+}
+
+void apply_bg(const NewmanCtx& c, const std::vector<std::uint32_t>& members, const std::vector<int>& pos,
+              const std::vector<double>& diag, const std::vector<double>& x, std::vector<double>& y) {
+    const size_t ng = members.size();
+    double kx = 0.0;
+    for (size_t a = 0; a < ng; ++a) kx += c.k[members[a]] * x[a];
+    apply_a(c, members, pos, x, y);
+    for (size_t a = 0; a < ng; ++a) y[a] = y[a] - c.k[members[a]] * kx / c.two_m - diag[a] * x[a];
 }
 
 // Eigen-decomposition of a small symmetric matrix (cyclic Jacobi). A is n x n,
@@ -497,9 +499,13 @@ void jacobi_eigen(std::vector<double>& A, int n, std::vector<double>& w, std::ve
 }
 
 // Largest algebraic eigenvalue and its unit eigenvector of a symmetric
-// operator (n x n), by Lanczos with full reorthogonalisation and explicit
-// restarts. `x` holds the start vector and receives the eigenvector.
-// `scale` is a bound of the spectral radius (for the tolerances).
+// operator (n x n), by thick-restart Lanczos (Wu & Simon 2000) with full
+// reorthogonalisation: the basis holds at most m = 48 vectors; at a restart
+// the 24 leading Ritz vectors and the last residual direction are kept, so
+// nearly degenerate leading eigenvalues (groups that are not split further)
+// converge in far fewer products than with a restart from one vector.
+// `x` holds the start vector and receives the eigenvector.  `scale` is a
+// bound of the spectral radius (for the tolerances).
 double leading_eigenpair(size_t n, const std::function<void(const std::vector<double>&, std::vector<double>&)>& op,
                          std::vector<double>& x, double scale) {
     auto dot = [&](const std::vector<double>& a, const std::vector<double>& b) {
@@ -521,47 +527,48 @@ double leading_eigenpair(size_t n, const std::function<void(const std::vector<do
     }
     normalize(x);
     const int m = static_cast<int>(std::min<size_t>(n, 48));
+    const int keep = std::max(1, m / 2);
     const double tol = 1e-9 * std::max(1.0, scale);
-    std::vector<std::vector<double>> V;
-    std::vector<double> w(n), alpha, beta, T, evals, Q;
+    std::vector<std::vector<double>> V(1, x);   // orthonormal basis
+    std::vector<double> H;                        // m x m projection V^T A V (row major)
+    std::vector<double> w(n), h, evals, Q;
+    int cur = 0;                                  // columns of H already known
     double theta = 0.0;
     long long matvecs = 0;
     for (int restart = 0; restart < 400 && matvecs < 40000; ++restart) {
-        V.assign(1, x);
-        alpha.clear();
-        beta.clear();
+        H.resize(static_cast<size_t>(m) * m);
         bool invariant = false;
-        for (int j = 0; j < m; ++j) {
+        double beta = 0.0;
+        int k = cur;
+        for (int j = cur; j < m; ++j) {
             op(V[j], w);
             ++matvecs;
-            const double a = dot(V[j], w);
-            alpha.push_back(a);
-            if (j + 1 == m) break;
-            for (size_t i = 0; i < n; ++i) w[i] -= a * V[j][i] + (j > 0 ? beta[j - 1] * V[j - 1][i] : 0.0);
+            h.assign(j + 1, 0.0);
             for (int pass = 0; pass < 2; ++pass)  // full reorthogonalisation
-                for (const auto& v : V) {
-                    const double h = dot(v, w);
-                    for (size_t i = 0; i < n; ++i) w[i] -= h * v[i];
+                for (int i = 0; i <= j; ++i) {
+                    const double c = dot(V[i], w);
+                    h[i] += c;
+                    for (size_t t = 0; t < n; ++t) w[t] -= c * V[i][t];
                 }
-            const double b = std::sqrt(dot(w, w));
-            if (b <= 1e-12 * std::max(1.0, scale)) {
-                invariant = true;
-                break;
+            for (int i = 0; i <= j; ++i) H[static_cast<size_t>(i) * m + j] = H[static_cast<size_t>(j) * m + i] = h[i];
+            k = j + 1;
+            beta = std::sqrt(dot(w, w));
+            if (beta <= 1e-12 * std::max(1.0, scale)) { invariant = true; break; }
+            for (double& t : w) t /= beta;
+            if (j + 1 < m) {
+                V.push_back(w);
+                H[static_cast<size_t>(j + 1) * m + j] = H[static_cast<size_t>(j) * m + j + 1] = beta;
             }
-            beta.push_back(b);
-            for (double& t : w) t /= b;
-            V.push_back(w);
         }
-        const int k = static_cast<int>(alpha.size());
-        T.assign(static_cast<size_t>(k) * k, 0.0);
-        for (int i = 0; i < k; ++i) {
-            T[static_cast<size_t>(i) * k + i] = alpha[i];
-            if (i + 1 < k) T[static_cast<size_t>(i) * k + i + 1] = T[static_cast<size_t>(i + 1) * k + i] = beta[i];
-        }
+        // Rayleigh-Ritz on the k x k projection
+        std::vector<double> T(static_cast<size_t>(k) * k);
+        for (int i = 0; i < k; ++i)
+            for (int j = 0; j < k; ++j) T[static_cast<size_t>(i) * k + j] = H[static_cast<size_t>(i) * m + j];
         jacobi_eigen(T, k, evals, Q);
-        int best = 0;
-        for (int i = 1; i < k; ++i)
-            if (evals[i] > evals[best]) best = i;
+        std::vector<int> order(k);
+        for (int i = 0; i < k; ++i) order[i] = i;
+        std::sort(order.begin(), order.end(), [&](int a, int b) { return evals[a] > evals[b]; });
+        const int best = order[0];
         theta = evals[best];
         std::fill(x.begin(), x.end(), 0.0);
         for (int j = 0; j < k; ++j) {
@@ -570,12 +577,35 @@ double leading_eigenpair(size_t n, const std::function<void(const std::vector<do
         }
         normalize(x);
         if (invariant) break;
-        // residual estimate |beta_k * y_k| of the Ritz pair
-        op(x, w);
-        ++matvecs;
-        double r = 0.0;
-        for (size_t i = 0; i < n; ++i) r += (w[i] - theta * x[i]) * (w[i] - theta * x[i]);
-        if (std::sqrt(r) <= tol) break;
+        // residual |A x - theta x| = beta |y_last| (checked with a product when small)
+        if (beta * std::fabs(Q[static_cast<size_t>(k - 1) * k + best]) <= 10.0 * tol) {
+            std::vector<double> ax(n);
+            op(x, ax);
+            ++matvecs;
+            double r = 0.0;
+            for (size_t i = 0; i < n; ++i) r += (ax[i] - theta * x[i]) * (ax[i] - theta * x[i]);
+            if (std::sqrt(r) <= tol) break;
+        }
+        // thick restart: leading Ritz vectors + the residual direction w
+        const int kk = std::min(keep, k);
+        std::vector<std::vector<double>> NV(kk + 1, std::vector<double>(n, 0.0));
+        for (int c = 0; c < kk; ++c) {
+            const int e = order[c];
+            for (int j = 0; j < k; ++j) {
+                const double y = Q[static_cast<size_t>(j) * k + e];
+                for (size_t i = 0; i < n; ++i) NV[c][i] += y * V[j][i];
+            }
+        }
+        NV[kk] = w;  // residual direction (unit, orthogonal to V)
+        std::fill(H.begin(), H.end(), 0.0);
+        for (int c = 0; c < kk; ++c) {
+            H[static_cast<size_t>(c) * m + c] = evals[order[c]];
+            // coupling of Ritz vector c with the residual direction: beta * y_last
+            const double cpl = beta * Q[static_cast<size_t>(k - 1) * k + order[c]];
+            H[static_cast<size_t>(c) * m + kk] = H[static_cast<size_t>(kk) * m + c] = cpl;
+        }
+        V.swap(NV);
+        cur = kk;  // column kk (the residual direction) is expanded next
     }
     return theta;
 }
@@ -612,52 +642,77 @@ bool newman_split(const NewmanCtx& c, const std::vector<std::uint32_t>& members,
         for (size_t a = 0; a < ng; ++a) side[a] = x[a] >= 0 ? 1 : -1;
         // s^T B s and fine tuning: Kernighan-Lin style sweeps (each node moved once
         // per sweep, best intermediate state kept), repeated while they improve
-        // the split (Newman 2006)
-        std::vector<double> s(ng), bs(ng);
-        for (size_t a = 0; a < ng; ++a) s[a] = side[a];
-        apply_bg(c, members, pos, diag, s, bs);
-        double best_f = 0.0;
-        for (size_t a = 0; a < ng; ++a) best_f += s[a] * bs[a];
-        // B_aa = -k_i^2/2m - diag   (A_ii = 0)
-        std::vector<double> baa(ng);
-        for (size_t a = 0; a < ng; ++a) baa[a] = -c.k[members[a]] * c.k[members[a]] / c.two_m - diag[a];
+        // the split (Newman 2006).  Moving node a changes s^T B s by
+        //   -4 s_a (B s)_a + 4 B_aa = u_a + 4 s_a k_a (k.s)/2m,
+        //   u_a = -4 s_a (A s)_a - 4 k_a^2/2m          (s_a^2 = 1, A_aa = 0),
+        // u changes only at the neighbours of a moved node and k.s is a scalar,
+        // so each step is one pass over the group.
+        std::vector<double> s(ng), as(ng), kk(ng), u(ng), sk(ng);
+        for (size_t a = 0; a < ng; ++a) { s[a] = side[a]; kk[a] = c.k[members[a]]; }
+        const double inv2m = 1.0 / c.two_m;
+        double ks = 0.0, f0 = 0.0;
+        auto recompute = [&] {
+            apply_a(c, members, pos, s, as);
+            ks = 0.0;
+            for (size_t a = 0; a < ng; ++a) ks += kk[a] * s[a];
+            f0 = 0.0;  // s^T B s
+            for (size_t a = 0; a < ng; ++a) {
+                f0 += s[a] * (as[a] - kk[a] * ks * inv2m - diag[a] * s[a]);
+                u[a] = -4.0 * s[a] * as[a] - 4.0 * kk[a] * kk[a] * inv2m;
+                sk[a] = 4.0 * s[a] * kk[a];
+            }
+        };
+        recompute();
+        double best_f = f0;
         std::vector<double> best_s = s;
-        std::vector<char> moved(ng);
+        std::vector<std::uint32_t> order(ng);
+        const double moved = -std::numeric_limits<double>::infinity();
         for (int sweep = 0; sweep < 20; ++sweep) {
             if (sweep > 0) {
                 s = best_s;
-                apply_bg(c, members, pos, diag, s, bs);
+                recompute();
             }
             double f = best_f;
-            bool improved = false;
-            std::fill(moved.begin(), moved.end(), 0);
+            size_t best_steps = 0;  // the best state is reached after this many moves
             for (size_t step = 0; step < ng; ++step) {
-                // choose unmoved node with the largest increase
-                double best_delta = -std::numeric_limits<double>::infinity();
-                size_t pick = ng;
-                for (size_t a = 0; a < ng; ++a) {
-                    if (moved[a]) continue;
-                    double delta = -4.0 * s[a] * bs[a] + 4.0 * baa[a];
-                    if (delta > best_delta) { best_delta = delta; pick = a; }
+                const double t = ks * inv2m;
+                // argmax (first index on ties) in 4 independent lanes; moved nodes have u = -inf
+                double bv[4] = {moved, moved, moved, moved};
+                size_t bi[4] = {ng, ng, ng, ng};
+                size_t a = 0;
+                for (; a + 4 <= ng; a += 4)
+                    for (int l = 0; l < 4; ++l) {
+                        const double delta = u[a + l] + sk[a + l] * t;
+                        if (delta > bv[l]) { bv[l] = delta; bi[l] = a + l; }
+                    }
+                for (; a < ng; ++a) {
+                    const double delta = u[a] + sk[a] * t;
+                    if (delta > bv[0]) { bv[0] = delta; bi[0] = a; }  // a is larger than any index in lane 0
                 }
+                double best_delta = moved;
+                size_t pick = ng;
+                for (int l = 0; l < 4; ++l)
+                    if (bi[l] < ng && (bv[l] > best_delta || (bv[l] == best_delta && bi[l] < pick))) {
+                        best_delta = bv[l];
+                        pick = bi[l];
+                    }
                 if (pick == ng) break;
-                // flip and update bs = B s
                 const double old = s[pick];
                 s[pick] = -old;
-                moved[pick] = 1;
+                u[pick] = moved;
+                order[step] = static_cast<std::uint32_t>(pick);
                 f += best_delta;
+                const double coef = 8.0 * old;  // u_b -= 4 s_b A_b,pick (s_pick change = -2 old)
                 const std::uint32_t i = members[pick];
-                const double coef = -2.0 * old;  // change of s[pick]
                 for (std::uint32_t e = c.g.R[i]; e < c.g.R[i + 1]; ++e) {
-                    int b = pos[c.g.C[e]];
-                    if (b > 0) bs[b - 1] += coef * wgt(c, e);
+                    const int b = pos[c.g.C[e]];
+                    if (b > 0) u[b - 1] += coef * s[b - 1] * wgt(c, e);
                 }
-                const double ki = c.k[i];
-                for (size_t a = 0; a < ng; ++a) bs[a] += coef * (-c.k[members[a]] * ki / c.two_m);
-                bs[pick] += coef * (-diag[pick]);
-                if (f > best_f + 1e-12 * std::max(1.0, std::fabs(best_f))) { best_f = f; best_s = s; improved = true; }
+                ks -= 2.0 * old * kk[pick];
+                if (f > best_f + 1e-12 * std::max(1.0, std::fabs(best_f))) { best_f = f; best_steps = step + 1; }
             }
-            if (!improved) break;
+            if (best_steps == 0) break;
+            for (size_t q = 0; q < best_steps; ++q) best_s[order[q]] = -best_s[order[q]];
         }
         int np = 0, nn = 0;
         for (size_t a = 0; a < ng; ++a) { side[a] = best_s[a] > 0 ? 1 : -1; (side[a] > 0 ? np : nn)++; }

@@ -1,6 +1,7 @@
 #include "pagani/construct.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -152,49 +153,86 @@ Csr edges_to_csr(std::uint32_t n, const WeightedEdge* e, std::uint64_t count, bo
 
 }  // namespace
 
+std::vector<std::uint32_t> sample_rows(std::uint32_t n) {
+    const std::uint32_t s = std::min<std::uint32_t>(n, 2048);
+    std::vector<std::uint32_t> rows(s);
+    for (std::uint32_t k = 0; k < s; ++k) rows[k] = static_cast<std::uint32_t>(static_cast<std::uint64_t>(k) * n / s);
+    return rows;
+}
+
+namespace {
+
+// Lower edge of the bin one below the bin where the cumulative count from the
+// top reaches `want` (-2 = everything).
+float threshold_from_histogram(const std::vector<std::uint64_t>& hist, double want) {
+    double cum = 0;
+    int b = kHistBins - 1;
+    for (; b >= 0; --b) { cum += static_cast<double>(hist[b]); if (cum >= want) break; }
+    // one bin of margin protects against rounding differences in binning
+    return b > 0 ? hist_bin_low(b - 1) : -2.0f;
+}
+
+}  // namespace
+
 void build_networks(EdgeSource& src, const std::vector<Threshold>& thresholds, bool keep_weights,
                     const std::function<void(ThresholdedNetwork&)>& emit) {
     const std::uint32_t n = src.size();
     const std::uint64_t m = packed_count(n);
     if (n < 2) throw Error("fewer than two voxels in the mask");
 
-    float lowest = std::numeric_limits<float>::infinity();
-    bool need_hist = false;
+    float lowest = std::numeric_limits<float>::infinity();  // lowest correlation threshold
+    std::uint64_t kmax = 0;                                   // largest sparsity edge count
     for (const auto& t : thresholds) {
-        if (t.sparsity) {
-            if (sparsity_edge_count(n, t.value) > 0) need_hist = true;
-        } else {
-            lowest = std::min(lowest, static_cast<float>(t.value));
-        }
+        if (t.sparsity) kmax = std::max(kmax, sparsity_edge_count(n, t.value));
+        else lowest = std::min(lowest, static_cast<float>(t.value));
     }
-    if (need_hist) {
-        auto hist = src.histogram();
+    std::vector<WeightedEdge> edges;
+    if (kmax > 0) {
+        // provisional threshold from a sample: ~15 % more edges than needed
+        float guess = std::numeric_limits<float>::quiet_NaN();
+        std::uint64_t cap = std::numeric_limits<std::uint64_t>::max();
+        const auto sample = src.sample_histogram();
+        if (!sample.empty()) {
+            double total = 0;
+            for (auto c : sample) total += static_cast<double>(c);
+            const float g = threshold_from_histogram(sample, 1.15 * total * static_cast<double>(kmax) / m + 50.0);
+            if (g > -1.5f) {
+                if (g < lowest) {  // the sparsity thresholds need the most edges
+                    guess = g;
+                    cap = 3 * kmax + (1u << 20);  // a bad guess must not exhaust memory
+                } else {
+                    guess = lowest;
+                }
+            }
+        }
+        std::vector<std::uint64_t> hist;
+        bool have = false;
+        if (guess == guess) have = src.histogram_and_extract(guess, cap, hist, edges);
+        else hist = src.histogram();
         std::uint64_t total = 0;
         for (auto c : hist) total += c;
         if (total != m) throw Error("internal error: histogram count " + std::to_string(total) + " != " + std::to_string(m));
-        for (const auto& t : thresholds) {
-            if (!t.sparsity) continue;
-            const std::uint64_t k = sparsity_edge_count(n, t.value);
-            if (k == 0) continue;
-            std::uint64_t cum = 0;
-            int b = kHistBins - 1;
-            for (; b >= 0; --b) { cum += hist[b]; if (cum >= k) break; }
-            if (b < 0) b = 0;
-            // one bin of margin protects against rounding differences in binning
-            lowest = std::min(lowest, b > 0 ? hist_bin_low(b - 1) : -2.0f);
+        for (const auto& t : thresholds)
+            if (t.sparsity && sparsity_edge_count(n, t.value) > 0)
+                lowest = std::min(lowest, threshold_from_histogram(hist, static_cast<double>(sparsity_edge_count(n, t.value))));
+        if (have && guess <= lowest) {
+            edges.erase(std::remove_if(edges.begin(), edges.end(), [&](const WeightedEdge& e) { return e.r < lowest; }),
+                        edges.end());
+        } else {
+            if (have) std::cout << "  (sampled threshold too high: second pass)" << std::endl;
+            std::vector<WeightedEdge>().swap(edges);
+            edges = src.extract(lowest);
         }
-    }
-    std::vector<WeightedEdge> edges;
-    if (lowest < std::numeric_limits<float>::infinity()) {
+    } else if (lowest < std::numeric_limits<float>::infinity()) {
         edges = src.extract(lowest);
-        // descending r, ties by (i, j)
-        std::sort(edges.begin(), edges.end(), [](const WeightedEdge& a, const WeightedEdge& b) {
-            if (a.r != b.r) return a.r > b.r;
-            if (a.i != b.i) return a.i < b.i;
-            return a.j < b.j;
-        });
-        for (auto& e : edges) if (e.r > 1.0f) e.r = 1.0f;  // float rounding
     }
+    // descending r, ties by (i, j)
+    std::sort(edges.begin(), edges.end(), [](const WeightedEdge& a, const WeightedEdge& b) {
+        if (a.r != b.r) return a.r > b.r;
+        if (a.i != b.i) return a.i < b.i;
+        return a.j < b.j;
+    });
+    for (auto& e : edges) if (e.r > 1.0f) e.r = 1.0f;  // float rounding
 
     for (const auto& t : thresholds) {
         ThresholdedNetwork net;
@@ -322,6 +360,42 @@ public:
             out.insert(out.end(), local.begin(), local.end());
         });
         return out;
+    }
+
+    std::vector<std::uint64_t> sample_histogram() override {
+        if (type_ == CorrType::Kendall) return {};
+        const auto rows = sample_rows(n_);
+        const unsigned nt = hardware_threads();
+        std::vector<std::vector<std::uint64_t>> h(nt, std::vector<std::uint64_t>(kHistBins, 0));
+        parallel_for(0, static_cast<long long>(rows.size()), [&](long long k, unsigned tid) {
+            for (std::uint32_t j = 0; j < n_; ++j)
+                if (j != rows[k]) ++h[tid][hist_bin(value(rows[k], j))];
+        });
+        for (unsigned t = 1; t < nt; ++t)
+            for (int b = 0; b < kHistBins; ++b) h[0][b] += h[t][b];
+        return h[0];
+    }
+
+    bool histogram_and_extract(float threshold, std::uint64_t max_edges, std::vector<std::uint64_t>& hist,
+                               std::vector<WeightedEdge>& edges) override {
+        const unsigned nt = hardware_threads();
+        std::vector<std::vector<std::uint64_t>> h(nt, std::vector<std::uint64_t>(kHistBins, 0));
+        std::vector<std::vector<WeightedEdge>> parts(nt);
+        std::atomic<std::uint64_t> count(0);
+        parallel_for(0, n_, [&](long long i, unsigned tid) {
+            for (std::uint32_t j = static_cast<std::uint32_t>(i) + 1; j < n_; ++j) {
+                const float r = value(static_cast<std::uint32_t>(i), j);
+                ++h[tid][hist_bin(r)];
+                if (r >= threshold && ++count <= max_edges) parts[tid].push_back({static_cast<std::uint32_t>(i), j, r});
+            }
+        });
+        for (unsigned t = 1; t < nt; ++t)
+            for (int b = 0; b < kHistBins; ++b) h[0][b] += h[t][b];
+        hist = std::move(h[0]);
+        edges.clear();
+        if (count > max_edges) return false;
+        for (auto& p : parts) edges.insert(edges.end(), p.begin(), p.end());
+        return true;
     }
 
     std::string description() const override { return "CPU (reference implementation)"; }

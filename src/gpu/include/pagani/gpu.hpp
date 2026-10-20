@@ -15,6 +15,13 @@ namespace gpu {
 // otherwise it is streamed tile by tile from host memory.
 EfficiencyResult efficiency_fw(const Csr& g, bool weighted);
 
+// Path length / efficiency of an unweighted network with a bit-parallel
+// multi-source BFS on the GPU (no distance matrix); same results as
+// pagani::efficiency(g, false).  efficiency_bfs_fits() tells whether the
+// network fits in GPU memory.
+EfficiencyResult efficiency_bfs(const Csr& g);
+bool efficiency_bfs_fits(const Csr& g);
+
 // Bytes of host/device memory the Floyd-Warshall needs for n nodes.
 std::size_t fw_matrix_bytes(std::uint32_t n);
 

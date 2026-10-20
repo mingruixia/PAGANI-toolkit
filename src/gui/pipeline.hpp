@@ -65,9 +65,20 @@ QStringList validate(const Settings& s);
 // Commands to run, in order.
 QVector<Command> buildCommands(const Settings& s, const QString& appDir);
 
+// True when the commands analyse random networks (lambda, gamma, sigma or the
+// modularity of random networks).
+bool usesRandomNetworks(const Settings& s);
+
+// A new seed for the random networks of one run (decimal, for PAGANI_SEED).
+// All tools of a run use the same seed, so lambda, gamma, sigma and the Q of
+// random networks are computed from the same random networks.
+QString newRandomSeed();
+
 // Windows batch script with the commands (and the settings embedded as a
-// comment so that the GUI can restore them exactly).
-QString buildScript(const Settings& s, const QString& appDir);
+// comment so that the GUI can restore them exactly).  With a non-empty
+// `seed`, the script sets PAGANI_SEED to it (unless it is already set), so
+// re-running the script reproduces the random networks.
+QString buildScript(const Settings& s, const QString& appDir, const QString& seed = QString());
 
 // Restore settings from a script written by PAGANI 2.1, or reconstruct them
 // from the commands of a PAGANI 1.x/2.0 script.  Returns false and a message

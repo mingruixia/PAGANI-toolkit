@@ -402,7 +402,7 @@ void MainWindow::saveScript() {
         QMessageBox::critical(this, "Save script", "Cannot write " + f);
         return;
     }
-    file.write(pagani_gui::buildScript(s, appDir()).toLocal8Bit());
+    file.write(pagani_gui::buildScript(s, appDir(), pagani_gui::newRandomSeed()).toLocal8Bit());
     scriptPath_->setText(QDir::toNativeSeparators(f));
     status_->setText("Script saved: " + QDir::toNativeSeparators(f));
 }
@@ -445,6 +445,15 @@ void MainWindow::run() {
     appendLog(QString("PAGANI Toolkit %1 - run started %2")
                   .arg(QApplication::applicationVersion(), QDateTime::currentDateTime().toString(Qt::ISODate)),
               "#1c3a5e");
+    // one seed for every step, so that all metrics use the same random networks
+    env_ = QProcessEnvironment::systemEnvironment();
+    if (pagani_gui::usesRandomNetworks(s)) {
+        if (!env_.contains("PAGANI_SEED")) env_.insert("PAGANI_SEED", pagani_gui::newRandomSeed());
+        appendLog("Random networks: PAGANI_SEED = " + env_.value("PAGANI_SEED") +
+                      " (lambda, gamma, sigma and Q use the same random networks; set PAGANI_SEED to this "
+                      "value to reproduce them)",
+                  "#666666");
+    }
     progress_->setRange(0, queue_.size());
     progress_->setFormat("%v / %m steps");
     progress_->setValue(0);
@@ -470,6 +479,7 @@ void MainWindow::startNext() {
     process_ = new QProcess(this);
     process_->setProcessChannelMode(QProcess::MergedChannels);
     process_->setWorkingDirectory(QFileInfo(c.program).absolutePath());
+    process_->setProcessEnvironment(env_);
     connect(process_, &QProcess::readyReadStandardOutput, this, &MainWindow::processOutput);
     connect(process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &MainWindow::processFinished);
     connect(process_, &QProcess::errorOccurred, this, &MainWindow::processError);

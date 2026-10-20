@@ -8,7 +8,7 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
 
-add_library(pagani_gpu STATIC cuda_common.cu kernels.cu corr_backend.cu fw_gpu.cu graph_gpu.cu)
+add_library(pagani_gpu STATIC cuda_common.cu kernels.cu corr_backend.cu fw_gpu.cu bfs_gpu.cu graph_gpu.cu)
 target_include_directories(pagani_gpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pagani_gpu PUBLIC pagani_construct pagani_metrics CUDA::cudart_static)
 set_target_properties(pagani_gpu PROPERTIES CUDA_SEPARABLE_COMPILATION OFF POSITION_INDEPENDENT_CODE ON)

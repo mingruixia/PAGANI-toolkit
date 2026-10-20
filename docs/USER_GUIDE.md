@@ -178,7 +178,8 @@ Definitions
 - gamma = Cp / mean(Cp of random networks); lambda = Lp / mean(Lp of random
   networks); sigma = gamma / lambda. Random networks preserve the degree
   sequence (Maslov & Sneppen 2002); for weighted networks the weights move with
-  the edges.
+  the edges. Within one GUI run (or with one `PAGANI_SEED`) gamma, lambda and the
+  modularity of random networks are computed from the same random networks.
 - Betweenness counts every ordered pair of nodes (as BCT `betweenness_bin`).
 - Eigenvector centrality is the leading eigenvector, non-negative, with unit
   length.
@@ -228,17 +229,21 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
   `CUCorMatHr` with sparse thresholds.
 - When the BOLD data do not fit in GPU memory, the construction tools stream
   them block by block (slower but no limit apart from host memory).
-- `CUBFW_Lp` uses a GPU all-pairs algorithm that needs N² × 4 bytes (resident
-  on the GPU when possible, otherwise streamed from host memory); for sparse
-  unweighted networks it automatically uses breadth-first search on the CPU,
-  which needs no distance matrix. `BFS_MulCPU` always uses the CPU.
+- `CUBFW_Lp` computes weighted networks with a GPU all-pairs algorithm
+  (Floyd–Warshall) that needs N² × 4 bytes (resident on the GPU when possible,
+  otherwise streamed from host memory). Unweighted networks use a GPU
+  breadth-first search of 512 sources at a time, which needs no distance
+  matrix (CPU breadth-first search if the network does not fit in GPU memory).
+  `BFS_MulCPU` always uses the CPU.
 - Random networks multiply the cost of Lp, Cp and modularity by (1 + n_random).
+  They are generated several at a time on all CPU threads (each needs about
+  50 bytes per edge of working memory; the tools use at most ~3 GB for this).
 
 ## 7. Environment variables
 
 | variable | effect |
 |---|---|
-| `PAGANI_SEED` | seed for random networks and Louvain (reproducible results) |
+| `PAGANI_SEED` | seed for random networks and Louvain (reproducible results, independent of the number of threads). With the same seed, the Lp, Cp and modularity tools use the same random networks for a network; the GUI sets a new seed for each run and writes it into saved scripts |
 | `PAGANI_THREADS` | maximum number of CPU threads |
 | `PAGANI_GPU` | index of the GPU to use (default 0) |
 | `PAGANI_BLOCK` | block size of the correlation tools (multiple of 96, default 4032) |

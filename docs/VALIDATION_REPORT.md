@@ -1,4 +1,4 @@
-# PAGANI 2.1 validation report
+# PAGANI 2.1 / 2.2 validation report
 
 Date: 2026-10-17 · build: develop @ `ff0c91a` (the `dev-build` package of the
 CI) · computer: Windows 11 workstation with an NVIDIA GeForce RTX 3080 Ti
@@ -90,3 +90,31 @@ correctly (path length, efficiency, binary clustering, degree, betweenness,
 eigenvector centrality up to its scaling, edge sets), and differs exactly where
 2.0 had a defect (unweighted construction, Fisher group averaging, Onnela
 clustering, eigenvector scaling, Newman modularity).
+
+## 4. PAGANI 2.2.0 vs 2.1.0
+
+Date: 2026-10-20 · build: develop @ `7dd653d` (2.2.0 `dev-build` package) ·
+same computer and data (8 subjects, 19,574 voxels, 1 % sparsity).
+
+**GPU test suite:** 80 passed, 2 skipped (GUI end-to-end tests, which pass in CI).
+
+**Real data, file by file** (`tests/realdata/run_comparison.py --extra`):
+
+| Results | Agreement with 2.1.0 |
+|---|---|
+| Networks: individual, group (Fisher), high-resolution Pearson, Kendall | identical edge sets and weights (max. difference 0) |
+| Lp, nodal efficiency, Cp, degree, betweenness, eigenvector centrality, PC (unweighted and weighted) | identical (max. difference 0) |
+| Newman modularity, weighted | identical partitions |
+| Newman modularity, unweighted | 6 of 8 networks: same Q; 2 networks: higher Q (0.5937 → 0.5941, 0.60975 → 0.60977), different partitions because nodes with exactly equal gains are now assigned without rounding noise; PC follows the partition |
+
+Run times for the 8 networks (seconds):
+
+| Step | 2.1.0 | 2.2.0 |
+|---|---|---|
+| Lp + nodal efficiency, unweighted | 40.7 | 2.1 |
+| Betweenness | 253.6 | 78.4 |
+| Newman (GPU), unweighted / weighted | 400.7 / 140.9 | 68.6 / 68.8 |
+| Kendall construction | 114.1 | ~33 |
+
+The analyses with random networks were timed with `tests/realdata/benchmark.py`
+on one network (CHANGELOG, 2.2.0 "Speed").

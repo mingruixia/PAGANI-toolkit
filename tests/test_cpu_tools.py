@@ -9,7 +9,7 @@ import pagani_ref as R
 
 def make_dir(tmp_path, A, weighted, name="sub01_spa5.000%_cor0.300"):
     d = tmp_path / ("weighted" if weighted else "unweighted")
-    d.mkdir(exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True)
     suffix = "_weighted.csr" if weighted else ".csr"
     R.write_csr(d / (name + suffix), A, weighted)
     return d, d / (name + suffix)
@@ -53,6 +53,19 @@ def test_weighted_tool_rejects_unweighted_network(tmp_path):
     assert "unweighted network" in cp.stderr
 
 
+@pytest.mark.parametrize("tool,args", [("Degree", []), ("Cp", [0, "g"]), ("BFS_MulCPU", [0, "g"]),
+                                       ("Louvain_Modularity", []), ("Newman_Modularity_CPU", [])])
+def test_weighted_tools_reject_non_positive_weights(tmp_path, tool, args):
+    A = R.modular_graph(weighted=True, seed=4)
+    A[A > 0] -= 0.5           # some edges get r <= 0
+    d, _ = make_dir(tmp_path, A, True)
+    cp = R.run(tool, True, d, *args, check=False)
+    assert cp.returncode == 1
+    assert "weight <= 0" in cp.stderr
+    # the same network analysed as unweighted is fine
+    assert R.run(tool, False, d, *args, check=False).returncode == 0
+
+
 @pytest.mark.parametrize("ctype", ["binary", "barrat", "onnela"])
 def test_clustering(tmp_path, ctype):
     weighted = ctype != "binary"
@@ -86,6 +99,44 @@ def test_clustering_random_and_gamma(tmp_path, graph, weighted):
     gamma = R.read_first_number(stem(f) + "_gamma.txt")
     assert gamma == pytest.approx(vals[0] / np.mean(vals[1:]), rel=1e-4)
     assert gamma > 1.5  # modular graph is far more clustered than random
+
+
+def test_random_networks_reproducible(tmp_path, graph, weighted):
+    """Random networks are generated in parallel; with PAGANI_SEED the results
+    must not depend on the number of threads, and differ between seeds."""
+    d, f = make_dir(tmp_path, graph, weighted)
+    args = (d, 6, "g") if not weighted else (d, 6, "2", "g")
+
+    def cp_values(**env):
+        R.run("Cp", weighted, *args, env=env)
+        return open(stem(f) + "_cp.txt").read()
+
+    one = cp_values(PAGANI_SEED="5", PAGANI_THREADS="1")
+    assert cp_values(PAGANI_SEED="5", PAGANI_THREADS="4") == one
+    assert cp_values(PAGANI_SEED="5") == one
+    assert cp_values(PAGANI_SEED="6") != one
+
+
+def test_random_networks_shared(tmp_path):
+    """With one PAGANI_SEED every tool generates the same random networks for a
+    network, whatever the file name, the other files in the folder, or whether
+    the weighted or unweighted tool is used."""
+    A = (R.modular_graph(weighted=False, seed=7) > 0) * 0.5   # equal weights:
+    env = {"PAGANI_SEED": "77"}                               # Barrat Cp == binary Cp
+
+    def rand_cp(d, f, weighted):
+        R.run("Cp", weighted, d, 4, *(["1"] if weighted else []), "g", env=env)
+        return [float(x) for x in open(stem(f) + "_cp.txt").read().split()][1:]
+
+    d1, f1 = make_dir(tmp_path / "a", A, False, name="net")
+    one = rand_cp(d1, f1, False)
+    # same network under another name, after another network in the folder
+    d2, _ = make_dir(tmp_path / "b", R.modular_graph(weighted=False, seed=8), False, name="aaa")
+    _, f2 = make_dir(tmp_path / "b", A, False, name="zzz")
+    assert rand_cp(d2, f2, False) == one
+    d3, f3 = make_dir(tmp_path / "c", A, True, name="net")
+    np.testing.assert_allclose(rand_cp(d3, f3, True), one, rtol=1e-5)
+    assert len(set(one)) > 1
 
 
 @pytest.mark.parametrize("tool", ["BFS_MulCPU"])

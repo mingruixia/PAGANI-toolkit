@@ -1,5 +1,85 @@
 # Changelog
 
+## 2.2.0 — 2026-10-20
+
+Fixes found in a second review of the 2.1 sources, much faster analyses with
+random networks and several faster GPU tools. No new analyses; command lines
+and file formats are unchanged.
+
+### Results that change compared with 2.1.0
+
+| Affected results | 2.1.0 | 2.2.0 |
+|---|---|---|
+| Weighted metrics of networks with edges of weight ≤ 0 | computed silently (meaningless) | the tools stop with a message |
+| Lambda, gamma, sigma, Q of random networks | each tool used its own random networks | one set of random networks for all; with a fixed `PAGANI_SEED` the values differ from 2.1.0 (another sample) |
+| Newman modularity, unweighted networks | — | nodes with exactly equal gains can be assigned differently (real data: same Q, 25 of 19,574 nodes) |
+
+All other results are unchanged (up to floating-point rounding).
+
+### Fixes
+
+- Weighted tools stop with a clear message when a network contains edges with
+  weight ≤ 0 (r ≤ 0). Previously clustering, modularity, eigenvector centrality
+  and strength were computed silently from such networks and were meaningless;
+  only the path-length tools refused them. Weighted construction rejects
+  negative correlation thresholds and warns when a sparsity threshold reaches
+  r ≤ 0; the GUI checks this before running.
+- Lambda, gamma, sigma and the Q of random networks are now computed from the
+  **same random networks**. Previously `CUBFW_Lp`/`BFS_MulCPU`, `Cp` and the
+  modularity tools each generated their own, so sigma = gamma / lambda
+  combined two independent sets. The random networks of a network now depend
+  only on `PAGANI_SEED` and the network itself (not on the tool, the file name
+  or the other files in the folder); the GUI uses one new seed per run (shown
+  in the log) and saved scripts set `PAGANI_SEED` (unless it is already set),
+  so re-running a script reproduces the random networks. Without
+  `PAGANI_SEED`, separate command-line runs still use independent random
+  networks.
+- Kendall networks with data larger than GPU memory: every subject after the
+  first could reuse part of the previous subject's data on the GPU (streaming
+  mode only).
+
+### Speed
+
+Measured on an RTX 3080 Ti with a 19,574-node network (1 % sparsity): Lp with
+10 random networks 75 → 4 s (unweighted), Cp with 20 random networks 112 → 8 s,
+Louvain with 10 random networks 64 → 11 s, betweenness 19 → 10 s, Newman 24 →
+10 s, unweighted Lp 2.1 → 0.4 s, Kendall construction 2.5× faster.
+
+- Random networks (lambda, gamma, Q of random networks) are generated several
+  at a time on all CPU threads, the next batch while the current one is
+  analysed, with a faster edge set (a single rewiring is about 2× faster with
+  identical output; on a 19,574-node network with 2 million edges this was
+  about 80 % of the run time of a 100-random-network analysis). Random network
+  *k* now has its own seed derived from `PAGANI_SEED` and *k*, so results with
+  a fixed `PAGANI_SEED` do not depend on the number of threads but differ from
+  those of 2.1.0 (another sample of random networks; `Maslov` is unchanged).
+- `CUBFW_Lp`, unweighted networks: path length and nodal efficiency are
+  computed on the GPU with a bit-parallel breadth-first search from 512 sources
+  at a time (Then et al. 2014), for every density. 2.1.0 used Floyd–Warshall
+  (density ≥ 1 %) or the CPU (density < 1 %). Results are identical up to
+  floating-point rounding; no N × N distance matrix is needed.
+- Newman modularity, about 3× faster: the leading eigenvector uses a
+  thick-restart Lanczos method (groups that are not split further, whose
+  leading eigenvalues are nearly degenerate, needed up to 10× more matrix
+  products with the simple restart), and the Kernighan–Lin fine tuning needs
+  one pass over the group per moved node instead of two plus a copy. The gains
+  of all nodes are now computed without accumulated rounding error, so for
+  unweighted networks, where many nodes have exactly equal gains, a tie can be
+  resolved differently than in 2.1.0 (real-data test: same Q and number of
+  modules, 25 of 19,574 nodes in another module; synthetic networks: equal or
+  slightly higher Q). Weighted results were identical on the real-data test.
+- `CUBC`: the BFS levels of each source are kept in GPU shared memory
+  (networks with up to about 24,000 nodes on GTX 10-series GPUs and about
+  50,000 on RTX 20/30/40-series GPUs; larger networks use the previous
+  kernel). Results are unchanged.
+- Sparsity thresholds: a provisional threshold is estimated from about 2,048
+  sampled rows of the correlation matrix, so that the exact histogram and the
+  candidate edges are collected in one pass over the matrix instead of two (a
+  second pass is made only if the estimate was too high). Results are
+  unchanged.
+- Kendall networks: the sign vectors are multiplied as 8-bit integers with the
+  GPU's 4-way integer dot product (exact) instead of 32-bit floats.
+
 ## 2.1.0 — 2026-10-17 (maintenance release)
 
 PAGANI 2.1 is a maintenance release of PAGANI 2.0 (HBM 2018). It adds no new

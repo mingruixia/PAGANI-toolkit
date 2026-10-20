@@ -103,12 +103,36 @@ def test_cormat_hr_blocks(tmp_path, mode):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_kendall_blocks(tmp_path, mode):
-    d, mask, thr, series = big_dataset(tmp_path, shape=(16, 14, 12), L=30, continuous=True)
+    # two subjects: the second must not reuse device data of the first (streaming cache)
+    d, mask, thr, series = big_dataset(tmp_path, nsub=2, shape=(16, 14, 12), L=30, continuous=True)
     n = series[0].shape[0]
     run("CuCorMat-sca-kendall", True, d, mask, thr, "n", "r", 0.3, env=MODES[mode])
-    C = kendall_tau_b(series[0])
-    check_r_network(find(d / "weightedKendall", f"s0_{n}_kendall_spa*_cor0.300_weighted.csr"), C, 0.3, True,
-                    tol=1e-5)
+    for s, X in enumerate(series):
+        C = kendall_tau_b(X)
+        check_r_network(find(d / "weightedKendall", f"s{s}_{n}_kendall_spa*_cor0.300_weighted.csr"), C, 0.3, True,
+                        tol=1e-5)
+
+
+def test_sparsity_misleading_sample(tmp_path):
+    """The sparsity threshold is first guessed from ~2048 sampled rows (every
+    second voxel here). Those voxels share a signal, so the guess is too high
+    and the edges must be extracted in a second pass; the network is exact."""
+    shape, L = (16, 16, 16), 40
+    rng = np.random.default_rng(5)
+    nvox = int(np.prod(shape))
+    X = rng.standard_normal((nvox, L))
+    X[::2] += 1.5 * rng.standard_normal(L)
+    X = X.astype(np.float32)
+    d = tmp_path / "data"
+    d.mkdir()
+    R.save_nifti(d / "s0.nii", X.reshape(shape + (L,), order="F"))
+    mask = tmp_path / "mask.nii"
+    R.save_nifti(mask, np.ones(shape, np.float32))
+    cp = run("CUCorMat", False, d, mask, 0.5, "n", "n", "s", 40, 2)
+    assert "second pass" in cp.stdout
+    C = corr(X.astype(float))
+    for s in (40, 2):
+        check_s_network(find(d / "unweighted", f"s0_{nvox}_spa{s:.3f}%*.csr"), C, s, False)
 
 
 def lp_tool():
@@ -126,23 +150,36 @@ def write_net(tmp_path, A, weighted):
 @pytest.mark.parametrize("weighted", [False, True], ids=["unweighted", "weighted"])
 @pytest.mark.parametrize("streamed", [False, True], ids=["resident", "streamed"])
 def test_path_length_large(tmp_path, weighted, streamed):
-    # n is not a multiple of the tile size; density > 1 % so the unweighted
-    # network also takes the Floyd-Warshall path
+    # n is not a multiple of the tile size (weighted: Floyd-Warshall) nor of
+    # the 512 sources of a GPU BFS batch (unweighted)
     A = R.modular_graph(n=3999, modules=5, p_in=0.04, p_out=0.004, seed=21, weighted=weighted)
     d, stem = write_net(tmp_path, A, weighted)
     env = {"PAGANI_GPU_MEM_LIMIT_MB": "300"} if streamed else {}
     cp = run(lp_tool(), weighted, d, 0, "gn", env=env)
-    if GPU and streamed:
+    if GPU and streamed and weighted:
         assert "streaming" in cp.stdout
     lp, nodal = R.efficiency(A, weighted)
     np.testing.assert_allclose(R.read_nm(stem + "_eff.nm"), nodal, rtol=1e-4, atol=1e-6)
     assert R.read_first_number(stem + "_Lp.txt") == pytest.approx(lp, rel=1e-4)
 
 
-def test_betweenness_large(tmp_path):
+def test_path_length_sparse_unweighted(tmp_path):
+    # density < 1 % (PAGANI 2.0 and 2.1.0 used the CPU here), several BFS
+    # batches, isolated nodes and a separate component
+    A = R.modular_graph(n=2100, modules=6, p_in=0.012, p_out=0.0004, seed=24, isolated=5, extra_component=True)
+    d, stem = write_net(tmp_path, A, False)
+    run(lp_tool(), False, d, 0, "gn")
+    lp, nodal = R.efficiency(A, False)
+    np.testing.assert_allclose(R.read_nm(stem + "_eff.nm"), nodal, rtol=1e-5, atol=1e-7)
+    assert R.read_first_number(stem + "_Lp.txt") == pytest.approx(lp, rel=1e-5)
+
+
+@pytest.mark.parametrize("kernel", ["shared", "global"])
+def test_betweenness_large(tmp_path, kernel):
+    # "global": the kernel used for networks whose BFS levels do not fit in shared memory
     A = R.modular_graph(n=1200, modules=4, p_in=0.03, p_out=0.004, seed=22)
     d, stem = write_net(tmp_path, A, False)
-    run("CUBC", False, d)
+    run("CUBC", False, d, env={"PAGANI_BC_SHARED": "0"} if kernel == "global" else {})
     np.testing.assert_allclose(R.read_nm(stem + "_bc.nm"), R.betweenness(A), rtol=1e-4, atol=1e-2)
 
 

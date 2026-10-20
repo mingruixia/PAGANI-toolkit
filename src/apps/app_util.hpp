@@ -3,6 +3,7 @@
 
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <string>
@@ -28,8 +29,20 @@ inline std::vector<std::string> csr_files(const std::string& dir) {
     return files;
 }
 
+// Weighted tools need positive, finite edge weights (weights are correlation
+// coefficients; distances are 1/w, clustering and modularity assume w > 0).
 inline Csr load_network(const std::string& path) {
-    return read_csr(path, kWeighted ? CsrWeights::Require : CsrWeights::Ignore);
+    Csr g = read_csr(path, kWeighted ? CsrWeights::Require : CsrWeights::Ignore);
+    if (kWeighted) {
+        std::uint64_t bad = 0;
+        for (float w : g.V) bad += !(w > 0.0f && w < std::numeric_limits<float>::infinity());
+        if (bad)
+            throw Error("'" + path + "' has " + std::to_string(bad / 2) +
+                        " edge(s) with a weight <= 0 (r <= 0); weighted network metrics require positive weights. "
+                        "Build weighted networks with a positive correlation threshold or a lower sparsity, "
+                        "or analyse the network as unweighted.");
+    }
+    return g;
 }
 
 // Output flags such as "gnl": every character must be in `allowed`.

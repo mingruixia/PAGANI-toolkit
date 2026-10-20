@@ -80,6 +80,8 @@ inline std::vector<Threshold> parse_thresholds(const std::string& type, char** b
         double v = parse_double(*p, "threshold");
         if (t == 'r' && !(v > -1.0 && v < 1.0)) throw UsageError("correlation thresholds must be in (-1, 1)");
         if (t == 's' && !(v > 0.0 && v <= 100.0)) throw UsageError("sparsity thresholds must be in (0, 100] (percent)");
+        if (t == 'r' && kWeighted && v < 0.0)
+            throw UsageError("weighted networks need a correlation threshold >= 0 (edge weights are r and must be positive)");
         th.push_back({t == 's', v});
     }
     if (th.empty()) throw UsageError("at least one threshold value is required");
@@ -99,6 +101,9 @@ inline void write_network(const std::string& stem, const ThresholdedNetwork& net
     const std::string path = stem + threshold_tag(net.spec.sparsity ? net.spec.value : net.sparsity, net.r) + suffix;
     std::cout << (net.spec.sparsity ? "sparsity " : "r > ") << net.spec.value << " -> " << net.graph.nnz() / 2
               << " edges (sparsity " << fmt6(net.sparsity) << "%, r = " << fmt6(net.r) << ")  " << path << std::endl;
+    if (weighted && net.graph.nnz() > 0 && net.r <= 0.0)
+        std::cout << "warning: this weighted network contains edges with r <= 0; the weighted metric tools "
+                     "require positive weights (use a lower sparsity)" << std::endl;
     write_csr(path, net.graph, weighted);
 }
 
