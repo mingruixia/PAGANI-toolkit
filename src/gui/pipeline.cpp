@@ -150,6 +150,8 @@ QStringList validate(const Settings& s) {
             double t;
             if (!isNumber(x, &t)) { e << "Invalid threshold value: " + x; continue; }
             if (!s.sparsityThreshold && !(t > -1.0 && t < 1.0)) e << "Correlation thresholds must be between -1 and 1: " + x;
+            else if (!s.sparsityThreshold && s.weighted && t < 0.0)
+                e << "Weighted networks need correlation thresholds >= 0 (the edge weights are r and must be positive): " + x;
             if (s.sparsityThreshold && !(t > 0.0 && t <= 100.0)) e << "Sparsity thresholds are percentages in (0, 100]: " + x;
         }
     } else if (!s.workingDir.isEmpty() && QFileInfo(s.workingDir).isDir() && !QFileInfo(networkDirectory(s)).isDir() &&

@@ -109,6 +109,7 @@ public:
         n_ = n;
         l_ = l;
         type_ = type;
+        cached1_ = cached2_ = -1;  // device slices of the previous subject are stale
         B_ = choose_block(n);
         nb_ = (n + B_ - 1) / B_;
         const size_t n0 = static_cast<size_t>(nb_) * B_;

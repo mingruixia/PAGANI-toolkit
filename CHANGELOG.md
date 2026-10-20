@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Weighted tools stop with a clear message when a network contains edges with
+  weight ≤ 0 (r ≤ 0). Previously clustering, modularity, eigenvector centrality
+  and strength were computed silently from such networks and were meaningless;
+  only the path-length tools refused them. Weighted construction rejects
+  negative correlation thresholds and warns when a sparsity threshold reaches
+  r ≤ 0; the GUI checks this before running.
+- Kendall networks with data larger than GPU memory: every subject after the
+  first could reuse part of the previous subject's data on the GPU (streaming
+  mode only).
+
 ## 2.1.0 — 2026-10-17 (maintenance release)
 
 PAGANI 2.1 is a maintenance release of PAGANI 2.0 (HBM 2018). It adds no new

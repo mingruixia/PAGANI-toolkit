@@ -115,6 +115,10 @@ int main(int argc, char** argv) {
     bad.construct = true;
     bad.thresholds = "1.5";
     CHECK(!validate(bad).isEmpty());
+    bad.thresholds = "-0.1";
+    CHECK(!validate(bad).isEmpty());  // weighted networks need positive weights
+    bad.weighted = false;
+    CHECK(validate(bad).isEmpty());
 
     // script round trip (paths with spaces)
     for (int variant = 0; variant < 4; ++variant) {

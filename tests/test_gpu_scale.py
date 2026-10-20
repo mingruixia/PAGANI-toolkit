@@ -103,12 +103,14 @@ def test_cormat_hr_blocks(tmp_path, mode):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_kendall_blocks(tmp_path, mode):
-    d, mask, thr, series = big_dataset(tmp_path, shape=(16, 14, 12), L=30, continuous=True)
+    # two subjects: the second must not reuse device data of the first (streaming cache)
+    d, mask, thr, series = big_dataset(tmp_path, nsub=2, shape=(16, 14, 12), L=30, continuous=True)
     n = series[0].shape[0]
     run("CuCorMat-sca-kendall", True, d, mask, thr, "n", "r", 0.3, env=MODES[mode])
-    C = kendall_tau_b(series[0])
-    check_r_network(find(d / "weightedKendall", f"s0_{n}_kendall_spa*_cor0.300_weighted.csr"), C, 0.3, True,
-                    tol=1e-5)
+    for s, X in enumerate(series):
+        C = kendall_tau_b(X)
+        check_r_network(find(d / "weightedKendall", f"s{s}_{n}_kendall_spa*_cor0.300_weighted.csr"), C, 0.3, True,
+                        tol=1e-5)
 
 
 def lp_tool():

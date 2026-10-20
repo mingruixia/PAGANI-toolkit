@@ -53,6 +53,19 @@ def test_weighted_tool_rejects_unweighted_network(tmp_path):
     assert "unweighted network" in cp.stderr
 
 
+@pytest.mark.parametrize("tool,args", [("Degree", []), ("Cp", [0, "g"]), ("BFS_MulCPU", [0, "g"]),
+                                       ("Louvain_Modularity", []), ("Newman_Modularity_CPU", [])])
+def test_weighted_tools_reject_non_positive_weights(tmp_path, tool, args):
+    A = R.modular_graph(weighted=True, seed=4)
+    A[A > 0] -= 0.5           # some edges get r <= 0
+    d, _ = make_dir(tmp_path, A, True)
+    cp = R.run(tool, True, d, *args, check=False)
+    assert cp.returncode == 1
+    assert "weight <= 0" in cp.stderr
+    # the same network analysed as unweighted is fine
+    assert R.run(tool, False, d, *args, check=False).returncode == 0
+
+
 @pytest.mark.parametrize("ctype", ["binary", "barrat", "onnela"])
 def test_clustering(tmp_path, ctype):
     weighted = ctype != "binary"

@@ -210,6 +210,15 @@ def test_kendall(tmp_path):
     check_s_network(find(d / "weightedKendall", f"sub00_{n}_kendall_spa10.000%*_weighted.csr"), C, 10, True, tol=1e-5)
 
 
+def test_weighted_needs_positive_weights(tmp_path):
+    d, mask, thr, series = make_dataset(tmp_path, nsub=1)
+    cp = run("CUCorMat", True, d, mask, thr, "n", "n", "r", -0.1, check=False)
+    assert cp.returncode == 2 and "threshold >= 0" in cp.stderr
+    assert run("CUCorMat", False, d, mask, thr, "n", "n", "r", -0.1, check=False).returncode == 0
+    cp = run("CUCorMat", True, d, mask, thr, "n", "n", "s", 80)   # 80 % includes r <= 0
+    assert "edges with r <= 0" in cp.stdout
+
+
 def test_mask_in_data_dir_is_not_a_subject(tmp_path):
     d, mask, thr, series = make_dataset(tmp_path, nsub=1)
     import shutil
