@@ -27,6 +27,13 @@
   at a time (Then et al. 2014), for every density. 2.1.0 used Floyd–Warshall
   (density ≥ 1 %) or the CPU (density < 1 %). Results are identical up to
   floating-point rounding; no N × N distance matrix is needed.
+- Newman modularity: the Kernighan–Lin fine tuning needs one pass over the
+  group per moved node instead of two plus a copy (about 5× faster; whole tool
+  about 2× faster on a 15,000-node network). The gains of all nodes are now
+  computed without accumulated rounding error, so for unweighted networks,
+  where many nodes have exactly equal gains, a tie can be resolved differently
+  than in 2.1.0 (on test networks Q was equal or slightly higher). Weighted
+  results are unchanged.
 
 ## 2.1.0 — 2026-10-17 (maintenance release)
 
