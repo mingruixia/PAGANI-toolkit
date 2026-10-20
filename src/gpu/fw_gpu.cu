@@ -5,6 +5,7 @@
 // C = min(C, A (x) B) computed with a register-blocked kernel.
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -63,6 +64,85 @@ __global__ void minplus_kernel(float* C, int ldc, const float* A, int lda, const
     for (int a = 0; a < RPT; ++a)
 #pragma unroll
         for (int b = 0; b < RPT; ++b) C[(r0 + ty + TPB * a) * ldc + c0 + tx + TPB * b] = acc[a][b];
+}
+
+// Register-blocked variant: TX x TY threads, each computing RY x RX elements
+// of the TILE x TILE block, read from shared memory as float4/float2 vectors
+// (A is stored transposed in shared memory).
+template <int TX, int TY, int RX, int RY, int KC>
+__global__ void __launch_bounds__(TX * TY) minplus_v_kernel(float* C, int ldc, const float* A, int lda,
+                                                             const float* B, int ldb, int K) {
+    static_assert(TX * RX == TILE && TY * RY == TILE, "tile");
+    constexpr int VX = RX % 4 == 0 ? 4 : 2, VY = RY % 4 == 0 ? 4 : 2;
+    constexpr int NT = TX * TY, PAD = 4;
+    __shared__ __align__(16) float As[KC][TILE + PAD];
+    __shared__ __align__(16) float Bs[KC][TILE + PAD];
+    const int tx = threadIdx.x % TX, ty = threadIdx.x / TX, tid = threadIdx.x;
+    const long long r0 = static_cast<long long>(blockIdx.y) * TILE;
+    const long long c0 = static_cast<long long>(blockIdx.x) * TILE;
+    auto row_of = [&](int a) { return (a / VY) * (TY * VY) + ty * VY + a % VY; };
+    auto col_of = [&](int b) { return (b / VX) * (TX * VX) + tx * VX + b % VX; };
+    float acc[RY][RX];
+#pragma unroll
+    for (int a = 0; a < RY; ++a)
+#pragma unroll
+        for (int b = 0; b < RX; ++b) acc[a][b] = C[(r0 + row_of(a)) * ldc + c0 + col_of(b)];
+    for (int kk = 0; kk < K; kk += KC) {
+        __syncthreads();
+#pragma unroll
+        for (int e = 0; e < (TILE * KC + NT - 1) / NT; ++e) {
+            const int idx = tid + NT * e;
+            if (idx < TILE * KC) {
+                const int row = idx / KC, col = idx % KC;
+                As[col][row] = A[(r0 + row) * lda + kk + col];
+                const int brow = idx / TILE, bcol = idx % TILE;
+                Bs[brow][bcol] = B[static_cast<long long>(kk + brow) * ldb + c0 + bcol];
+            }
+        }
+        __syncthreads();
+#pragma unroll
+        for (int k = 0; k < KC; ++k) {
+            float av[RY], bv[RX];
+#pragma unroll
+            for (int g = 0; g < RY / VY; ++g) {
+                const float* p = &As[k][g * (TY * VY) + ty * VY];
+                if constexpr (VY == 4) {
+                    const float4 v = *reinterpret_cast<const float4*>(p);
+                    av[g * 4] = v.x; av[g * 4 + 1] = v.y; av[g * 4 + 2] = v.z; av[g * 4 + 3] = v.w;
+                } else {
+                    const float2 v = *reinterpret_cast<const float2*>(p);
+                    av[g * 2] = v.x; av[g * 2 + 1] = v.y;
+                }
+            }
+#pragma unroll
+            for (int g = 0; g < RX / VX; ++g) {
+                const float* p = &Bs[k][g * (TX * VX) + tx * VX];
+                if constexpr (VX == 4) {
+                    const float4 v = *reinterpret_cast<const float4*>(p);
+                    bv[g * 4] = v.x; bv[g * 4 + 1] = v.y; bv[g * 4 + 2] = v.z; bv[g * 4 + 3] = v.w;
+                } else {
+                    const float2 v = *reinterpret_cast<const float2*>(p);
+                    bv[g * 2] = v.x; bv[g * 2 + 1] = v.y;
+                }
+            }
+#pragma unroll
+            for (int a = 0; a < RY; ++a)
+#pragma unroll
+                for (int b = 0; b < RX; ++b) acc[a][b] = fminf(acc[a][b], av[a] + bv[b]);
+        }
+    }
+#pragma unroll
+    for (int a = 0; a < RY; ++a)
+#pragma unroll
+        for (int b = 0; b < RX; ++b) C[(r0 + row_of(a)) * ldc + c0 + col_of(b)] = acc[a][b];
+}
+
+int fw_variant() {
+    static const int v = [] {
+        const char* env = std::getenv("PAGANI_FW_VARIANT");  // temporary benchmark knob
+        return env ? std::atoi(env) : 0;
+    }();
+    return v;
 }
 
 // Close one TILE x TILE diagonal tile in shared memory (diagonal must be 0).
@@ -135,7 +215,15 @@ __global__ void rowsum_kernel(const float* D, long long ld, long long row0, long
 
 void minplus(float* C, int ldc, const float* A, int lda, const float* B, int ldb, int M, int N, int K) {
     dim3 grid(N / TILE, M / TILE), block(TPB, TPB);
-    minplus_kernel<<<grid, block>>>(C, ldc, A, lda, B, ldb, K);
+    switch (fw_variant()) {
+    case 1: minplus_v_kernel<16, 16, 6, 6, 16><<<grid, 256>>>(C, ldc, A, lda, B, ldb, K); break;
+    case 2: minplus_v_kernel<12, 12, 8, 8, 16><<<grid, 144>>>(C, ldc, A, lda, B, ldb, K); break;
+    case 3: minplus_v_kernel<12, 12, 8, 8, 32><<<grid, 144>>>(C, ldc, A, lda, B, ldb, K); break;
+    case 4: minplus_v_kernel<16, 8, 6, 12, 16><<<grid, 128>>>(C, ldc, A, lda, B, ldb, K); break;
+    case 5: minplus_v_kernel<24, 12, 4, 8, 16><<<grid, 288>>>(C, ldc, A, lda, B, ldb, K); break;
+    case 6: minplus_v_kernel<12, 24, 8, 4, 16><<<grid, 288>>>(C, ldc, A, lda, B, ldb, K); break;
+    default: minplus_kernel<<<grid, block>>>(C, ldc, A, lda, B, ldb, K);
+    }
     PAGANI_KERNEL_CHECK();
 }
 

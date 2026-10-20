@@ -152,10 +152,12 @@ def test_path_length_sparse_unweighted(tmp_path):
     assert R.read_first_number(stem + "_Lp.txt") == pytest.approx(lp, rel=1e-5)
 
 
-def test_betweenness_large(tmp_path):
+@pytest.mark.parametrize("kernel", ["shared", "global"])
+def test_betweenness_large(tmp_path, kernel):
+    # "global": the kernel used for networks whose BFS levels do not fit in shared memory
     A = R.modular_graph(n=1200, modules=4, p_in=0.03, p_out=0.004, seed=22)
     d, stem = write_net(tmp_path, A, False)
-    run("CUBC", False, d)
+    run("CUBC", False, d, env={"PAGANI_BC_SHARED": "0"} if kernel == "global" else {})
     np.testing.assert_allclose(R.read_nm(stem + "_bc.nm"), R.betweenness(A), rtol=1e-4, atol=1e-2)
 
 

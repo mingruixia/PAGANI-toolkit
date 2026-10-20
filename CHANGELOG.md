@@ -34,6 +34,9 @@
   where many nodes have exactly equal gains, a tie can be resolved differently
   than in 2.1.0 (on test networks Q was equal or slightly higher). Weighted
   results are unchanged.
+- `CUBC`: the BFS levels of each source are kept in GPU shared memory
+  (networks with up to about 24,000 nodes, or more on GPUs with more shared
+  memory; larger networks use the previous kernel). Results are unchanged.
 
 ## 2.1.0 — 2026-10-17 (maintenance release)
 

@@ -43,6 +43,9 @@ def main():
     ap.add_argument("--n", type=int, default=60000)
     ap.add_argument("--l", type=int, default=1200)
     ap.add_argument("--fw-sizes", type=int, nargs="*", default=[20000, 40000])
+    ap.add_argument("--fw-variants", type=int, nargs="*", default=[],
+                    help="also time these PAGANI_FW_VARIANT kernels (weighted Floyd-Warshall)")
+    ap.add_argument("--skip-construct", action="store_true")
     a = ap.parse_args()
     work = Path(a.work)
     work.mkdir(parents=True, exist_ok=True)
@@ -65,6 +68,8 @@ def main():
 
     # ---- correlation engine on synthetic data
     syn = work / "syn"
+    if a.skip_construct:
+        a.n = 0
     if syn.exists():
         shutil.rmtree(syn)
     syn.mkdir()
@@ -79,14 +84,15 @@ def main():
     flat = np.zeros(nx * ny * nz, np.float32)
     flat[: a.n] = 1
     R.save_nifti(mask, flat.reshape((nx, ny, nz), order="F"))
-    for label, args in [("CUCorMat N=%d L=%d, r > 0.9 (1 pass)" % (a.n, a.l), ["n", "n", "r", 0.9]),
-                        ("CUCorMat N=%d L=%d, sparsity 0.1%% (2 passes)" % (a.n, a.l), ["n", "n", "s", 0.1])]:
+    for label, args in ([] if a.skip_construct else [("CUCorMat N=%d L=%d, r > 0.9 (1 pass)" % (a.n, a.l), ["n", "n", "r", 0.9]),
+                        ("CUCorMat N=%d L=%d, sparsity 0.1%% (2 passes)" % (a.n, a.l), ["n", "n", "s", 0.1])]):
         dt, cp = timed([exe(a.pkg, False, "CUCorMat"), syn, mask, 0.5, *args], log)
         m_ = re.search(r"done in ([0-9.e+-]+) s", cp.stdout)
         note(label, dt, f"(tool: {m_.group(1) if m_ else '?'} s)")
         shutil.rmtree(syn / "unweighted", ignore_errors=True)
-    dt, cp = timed([exe(a.pkg, False, "CUCorMatHr"), syn, mask, 0.5, "n", "s", "s", 0.1], log)
-    note("CUCorMatHr Spearman sparsity 0.1%", dt)
+    if not a.skip_construct:
+        dt, cp = timed([exe(a.pkg, False, "CUCorMatHr"), syn, mask, 0.5, "n", "s", "s", 0.1], log)
+        note("CUCorMatHr Spearman sparsity 0.1%", dt)
     shutil.rmtree(syn, ignore_errors=True)
 
     # ---- path length on a large synthetic weighted network (Floyd-Warshall scaling)
@@ -108,8 +114,17 @@ def main():
             dd.mkdir()
             shutil.move(str(d / ("syn_weighted.csr" if weighted else "syn.csr")), dd)
             kind = "weighted" if weighted else "unweighted"
-            dt, cp = timed([exe(a.pkg, weighted, "CUBFW_Lp"), dd, 0, "g"], log)
+            dt, cp = timed([exe(a.pkg, weighted, "CUBFW_Lp"), dd, 0, "gn"], log)
             note(f"CUBFW_Lp synthetic {kind} n={nn} (1% density)", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
+            if weighted and a.fw_variants:
+                ref = {p.name: p.read_bytes() for p in dd.glob("*_eff.nm")}
+                for v in a.fw_variants:
+                    for p in dd.glob("*_eff.nm"):
+                        p.unlink()
+                    dt, cp = timed([exe(a.pkg, True, "CUBFW_Lp"), dd, 0, "gn"], log, {"PAGANI_FW_VARIANT": str(v)})
+                    same = {p.name: p.read_bytes() for p in dd.glob("*_eff.nm")} == ref
+                    note(f"  FW kernel variant {v}, n={nn}", dt,
+                         ("identical" if same else "DIFFERENT") if cp.returncode == 0 else f"exit {cp.returncode}")
             if not weighted and nn <= 20000:
                 dt, cp = timed([exe(a.pkg, False, "CUBC"), dd], log)
                 note(f"CUBC synthetic n={nn} (1% density)", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
@@ -136,10 +151,14 @@ def main():
                      ("Louvain", "Louvain_Modularity", [d]),
                      ("Newman GPU", "CUModularity" if weighted else "CUmodularity", [d]),
                      ("Participation coefficient", "PC_CPU", [d])]
+            steps += [("Lp + 10 random networks (CUBFW_Lp)", "CUBFW_Lp", [d, 10, "g"]),
+                      ("Cp + 20 random networks", "Cp", [d, 20, "g"]),
+                      ("Louvain + 10 random networks", "Louvain_Modularity", [d, 10])]
             if not weighted:
                 steps.insert(5, ("Betweenness (CUBC)", "CUBC", [d]))
-            for name, tool, args in steps:
-                dt, cp = timed([exe(a.pkg, weighted, tool), *args], log)
+                steps.insert(6, ("Betweenness (CUBC, global-memory kernel)", "CUBC", [d], {"PAGANI_BC_SHARED": "0"}))
+            for name, tool, args, *env in steps:
+                dt, cp = timed([exe(a.pkg, weighted, tool), *args], log, env[0] if env else None)
                 note(f"{kind:10s} {name}", dt, "" if cp.returncode == 0 else f"exit {cp.returncode}")
     out.write("\ndone\n")
 
