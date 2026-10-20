@@ -94,6 +94,7 @@ private:
 
     QProcess* process_ = nullptr;
     QVector<pagani_gui::Command> queue_;
+    QProcessEnvironment env_;
     int current_ = -1;
     bool stopping_ = false;
 };

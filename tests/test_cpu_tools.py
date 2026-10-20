@@ -9,7 +9,7 @@ import pagani_ref as R
 
 def make_dir(tmp_path, A, weighted, name="sub01_spa5.000%_cor0.300"):
     d = tmp_path / ("weighted" if weighted else "unweighted")
-    d.mkdir(exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True)
     suffix = "_weighted.csr" if weighted else ".csr"
     R.write_csr(d / (name + suffix), A, weighted)
     return d, d / (name + suffix)
@@ -115,6 +115,28 @@ def test_random_networks_reproducible(tmp_path, graph, weighted):
     assert cp_values(PAGANI_SEED="5", PAGANI_THREADS="4") == one
     assert cp_values(PAGANI_SEED="5") == one
     assert cp_values(PAGANI_SEED="6") != one
+
+
+def test_random_networks_shared(tmp_path):
+    """With one PAGANI_SEED every tool generates the same random networks for a
+    network, whatever the file name, the other files in the folder, or whether
+    the weighted or unweighted tool is used."""
+    A = (R.modular_graph(weighted=False, seed=7) > 0) * 0.5   # equal weights:
+    env = {"PAGANI_SEED": "77"}                               # Barrat Cp == binary Cp
+
+    def rand_cp(d, f, weighted):
+        R.run("Cp", weighted, d, 4, *(["1"] if weighted else []), "g", env=env)
+        return [float(x) for x in open(stem(f) + "_cp.txt").read().split()][1:]
+
+    d1, f1 = make_dir(tmp_path / "a", A, False, name="net")
+    one = rand_cp(d1, f1, False)
+    # same network under another name, after another network in the folder
+    d2, _ = make_dir(tmp_path / "b", R.modular_graph(weighted=False, seed=8), False, name="aaa")
+    _, f2 = make_dir(tmp_path / "b", A, False, name="zzz")
+    assert rand_cp(d2, f2, False) == one
+    d3, f3 = make_dir(tmp_path / "c", A, True, name="net")
+    np.testing.assert_allclose(rand_cp(d3, f3, True), one, rtol=1e-5)
+    assert len(set(one)) > 1
 
 
 @pytest.mark.parametrize("tool", ["BFS_MulCPU"])

@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
             if (nrand > 0) {
                 o << "\n************************* Modularity of Random Networks *************************\n\n";
                 double mean = 0;
-                for_each_random_network(g, nrand, gen.engine()(), [&](int r, const Csr& rg) {
+                for_each_random_network(g, nrand, random_networks_seed(g), [&](int r, const Csr& rg) {
                     Partition pr = detect(rg, gen.engine());
                     mean += pr.q;
                     o << "Random Network " << r + 1 << ":\n";

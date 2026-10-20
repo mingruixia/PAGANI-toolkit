@@ -8,6 +8,16 @@
   only the path-length tools refused them. Weighted construction rejects
   negative correlation thresholds and warns when a sparsity threshold reaches
   r ≤ 0; the GUI checks this before running.
+- Lambda, gamma, sigma and the Q of random networks are now computed from the
+  **same random networks**. Previously `CUBFW_Lp`/`BFS_MulCPU`, `Cp` and the
+  modularity tools each generated their own, so sigma = gamma / lambda
+  combined two independent sets. The random networks of a network now depend
+  only on `PAGANI_SEED` and the network itself (not on the tool, the file name
+  or the other files in the folder); the GUI uses one new seed per run (shown
+  in the log) and saved scripts set `PAGANI_SEED` (unless it is already set),
+  so re-running a script reproduces the random networks. Without
+  `PAGANI_SEED`, separate command-line runs still use independent random
+  networks.
 - Kendall networks with data larger than GPU memory: every subject after the
   first could reuse part of the previous subject's data on the GPU (streaming
   mode only).

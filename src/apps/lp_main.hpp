@@ -31,7 +31,6 @@ inline int lp_main(const char* tool, int argc, char** argv, const EfficiencyFn& 
         const bool want_g = flags.count('g'), want_n = flags.count('n'), want_l = flags.count('l');
         if (want_l && nrand == 0) throw UsageError("lambda (l) requires at least one random network");
 
-        RandomNetworkGenerator gen;
         for (const auto& f : csr_files(dir)) {
             const std::string path = path_join(dir, f);
             const std::string stem = path_without_extension(path);
@@ -48,7 +47,7 @@ inline int lp_main(const char* tool, int argc, char** argv, const EfficiencyFn& 
             std::vector<double> rand_lp;
             if (nrand > 0 && (want_g || want_l)) {
                 std::cout << "calculating Lp for " << nrand << " random network(s) ..." << std::endl;
-                for_each_random_network(g, nrand, gen.engine()(),
+                for_each_random_network(g, nrand, random_networks_seed(g),
                                         [&](int, const Csr& rg) { rand_lp.push_back(compute(rg).lp); });
             }
             if (want_g) {

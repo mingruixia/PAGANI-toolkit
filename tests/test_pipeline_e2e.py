@@ -38,12 +38,15 @@ def fake_app(tmp_path):
     return app
 
 
-def script_commands(script):
+def script_commands(script, env):
     cmds = []
     for line in script.splitlines():
         s = line.strip()
         low = s.lower()
-        if not s or low.startswith(("@", "rem", "echo", "if errorlevel", "goto", ":", "exit")):
+        if low.startswith("if not defined pagani_seed set "):
+            env.setdefault("PAGANI_SEED", s.split("=", 1)[1].strip('"'))
+            continue
+        if not s or low.startswith(("@", "rem", "echo", "if errorlevel", "goto", ":", "exit", "setlocal")):
             continue
         # forward slashes work on Windows too and keep shlex from eating backslashes
         cmds.append(shlex.split(s.replace("\\", "/"), posix=True))
@@ -68,8 +71,10 @@ def test_gui_script_runs(tmp_path, weighted):
     sf.write_text(json.dumps(settings))
     cp = subprocess.run([str(PIPE), "--script", str(sf), str(app)], capture_output=True, text=True)
     assert cp.returncode == 0, cp.stderr
-    env = {**os.environ, "PAGANI_SEED": "3"}
-    for cmd in script_commands(cp.stdout):
+    env = {k: v for k, v in os.environ.items() if k != "PAGANI_SEED"}
+    cmds = script_commands(cp.stdout, env)
+    assert env["PAGANI_SEED"] == "12345"          # one seed for all tools, written in the script
+    for cmd in cmds:
         r = subprocess.run(cmd, capture_output=True, text=True, env=env)
         assert r.returncode == 0, f"{cmd}\n{r.stdout}\n{r.stderr}"
     net = d / ("weighted" if weighted else "unweighted")

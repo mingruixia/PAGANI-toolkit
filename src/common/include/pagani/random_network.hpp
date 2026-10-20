@@ -39,6 +39,13 @@ private:
 // RandomNetworkGenerator(random_network_seed(base_seed, k)).rewire(g), so the
 // results do not depend on the number of threads.
 std::uint64_t random_network_seed(std::uint64_t base_seed, int k);
+
+// base_seed for the random networks of `g`: derived from PAGANI_SEED (or a
+// random value drawn once per process) and the topology of `g` only.  With the
+// same PAGANI_SEED, every tool (Lp, Cp, modularity; weighted or unweighted)
+// therefore generates the same random networks for a network, so lambda,
+// gamma, sigma and the Q of random networks refer to one set.
+std::uint64_t random_networks_seed(const Csr& g);
 void for_each_random_network(const Csr& g, int count, std::uint64_t base_seed,
                              const std::function<void(int, const Csr&)>& use);
 

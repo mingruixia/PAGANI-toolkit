@@ -178,7 +178,8 @@ Definitions
 - gamma = Cp / mean(Cp of random networks); lambda = Lp / mean(Lp of random
   networks); sigma = gamma / lambda. Random networks preserve the degree
   sequence (Maslov & Sneppen 2002); for weighted networks the weights move with
-  the edges.
+  the edges. Within one GUI run (or with one `PAGANI_SEED`) gamma, lambda and the
+  modularity of random networks are computed from the same random networks.
 - Betweenness counts every ordered pair of nodes (as BCT `betweenness_bin`).
 - Eigenvector centrality is the leading eigenvector, non-negative, with unit
   length.
@@ -242,7 +243,7 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
 
 | variable | effect |
 |---|---|
-| `PAGANI_SEED` | seed for random networks and Louvain (reproducible results, independent of the number of threads) |
+| `PAGANI_SEED` | seed for random networks and Louvain (reproducible results, independent of the number of threads). With the same seed, the Lp, Cp and modularity tools use the same random networks for a network; the GUI sets a new seed for each run and writes it into saved scripts |
 | `PAGANI_THREADS` | maximum number of CPU threads |
 | `PAGANI_GPU` | index of the GPU to use (default 0) |
 | `PAGANI_BLOCK` | block size of the correlation tools (multiple of 96, default 4032) |

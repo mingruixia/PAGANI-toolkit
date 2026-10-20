@@ -43,7 +43,6 @@ int main(int argc, char** argv) {
         if (kWeighted)
             std::cout << "clustering coefficient: " << (type == ClusteringType::Barrat ? "Barrat" : "Onnela") << std::endl;
 
-        RandomNetworkGenerator gen;
         for (const auto& f : csr_files(dir)) {
             const std::string path = path_join(dir, f);
             const std::string stem = path_without_extension(path);
@@ -59,7 +58,7 @@ int main(int argc, char** argv) {
             if (nrand > 0 && (want_g || want_k)) {
                 std::cout << "calculating Cp for " << nrand << " random network(s) ..." << std::endl;
                 std::vector<float> tmp;
-                for_each_random_network(g, nrand, gen.engine()(),
+                for_each_random_network(g, nrand, random_networks_seed(g),
                                         [&](int, const Csr& rg) { rand_cp.push_back(clustering(rg, type, tmp)); });
             }
             if (want_g) {

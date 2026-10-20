@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "%s\n", errors.join("\n").toLocal8Bit().constData());
             return 3;
         }
-        std::printf("%s", buildScript(s, argv[3]).toLocal8Bit().constData());
+        std::printf("%s", buildScript(s, argv[3], "12345").toLocal8Bit().constData());
         return 0;
     }
     QTemporaryDir tmp;
@@ -130,12 +130,27 @@ int main(int argc, char** argv) {
         t.saveCorMatrix = variant == 3;
         t.modularityAlgorithm = variant % 3;
         t.cpType = variant == 3 ? 1 : 2;
-        const QString script = buildScript(t, appDir);
+        const QString script = buildScript(t, appDir, "4242");
         CHECK(script.contains("\"" + QDir::toNativeSeparators(t.workingDir) + "\""));
+        // one seed for all tools when random networks are used
+        CHECK(script.contains("if not defined PAGANI_SEED set \"PAGANI_SEED=4242\"") == usesRandomNetworks(t));
         Settings back;
         QString msg;
         CHECK(parseScript(script, back, &msg));
         CHECK(same(t, back));
+    }
+
+    // random-network seed only when random networks are analysed
+    {
+        Settings t = s;
+        CHECK(usesRandomNetworks(t));
+        t.gamma = t.lambda = t.sigma = t.modularity = false;
+        CHECK(!usesRandomNetworks(t));
+        CHECK(!buildScript(t, appDir, "4242").contains("PAGANI_SEED"));
+        t.modularity = true;
+        t.randomNetworks = "0";
+        CHECK(!usesRandomNetworks(t));
+        CHECK(newRandomSeed() != newRandomSeed());
     }
 
     // command parsing without the embedded settings (older scripts)

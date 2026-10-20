@@ -79,6 +79,16 @@ std::uint64_t splitmix64(std::uint64_t x) {
 
 RandomNetworkGenerator::RandomNetworkGenerator() : rng_(initial_seed()) {}
 
+std::uint64_t random_networks_seed(const Csr& g) {
+    static const std::uint64_t run = initial_seed();  // PAGANI_SEED, or random once per process
+    // topology only (weights travel with the edges and do not change the swaps)
+    std::uint64_t h = splitmix64(g.n);
+    auto mix = [&h](std::uint64_t v) { h = splitmix64(h ^ (v + 0x632be59bd9b4e019ULL + (h << 6) + (h >> 2))); };
+    for (auto r : g.R) mix(r);
+    for (auto c : g.C) mix(c);
+    return splitmix64(run ^ h);
+}
+
 Csr RandomNetworkGenerator::rewire(const Csr& src, double swaps_per_edge) {
     const bool weighted = src.weighted();
     // Edge list with u < v.
