@@ -236,7 +236,7 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
   `BFS_MulCPU` always uses the CPU.
 - Random networks multiply the cost of Lp, Cp and modularity by (1 + n_random).
   They are generated several at a time on all CPU threads (each needs about
-  25 bytes per edge of working memory; the tools use at most ~3 GB for this).
+  50 bytes per edge of working memory; the tools use at most ~3 GB for this).
 
 ## 7. Environment variables
 
