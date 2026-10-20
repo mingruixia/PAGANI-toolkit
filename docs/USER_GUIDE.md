@@ -235,12 +235,14 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
   matrix (CPU breadth-first search if the network does not fit in GPU memory).
   `BFS_MulCPU` always uses the CPU.
 - Random networks multiply the cost of Lp, Cp and modularity by (1 + n_random).
+  They are generated several at a time on all CPU threads (each needs about
+  25 bytes per edge of working memory; the tools use at most ~3 GB for this).
 
 ## 7. Environment variables
 
 | variable | effect |
 |---|---|
-| `PAGANI_SEED` | seed for random networks and Louvain (reproducible results) |
+| `PAGANI_SEED` | seed for random networks and Louvain (reproducible results, independent of the number of threads) |
 | `PAGANI_THREADS` | maximum number of CPU threads |
 | `PAGANI_GPU` | index of the GPU to use (default 0) |
 | `PAGANI_BLOCK` | block size of the correlation tools (multiple of 96, default 4032) |
