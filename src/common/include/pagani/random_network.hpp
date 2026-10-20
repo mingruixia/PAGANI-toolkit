@@ -1,12 +1,13 @@
 // PAGANI Toolkit - degree-preserving random networks (Maslov & Sneppen 2002).
 //
 // Fixes over PAGANI 2.0 (audit M-01/M-02): the rewired network is actually
-// written to the output; every call draws from one 64-bit Mersenne Twister
-// stream so successive random networks differ; set the environment variable
-// PAGANI_SEED to an integer to make results reproducible.
+// written to the output and successive random networks differ (64-bit Mersenne
+// Twister streams); set the environment variable PAGANI_SEED to an integer to
+// make results reproducible.
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <random>
 
 #include "pagani/graph.hpp"
@@ -31,5 +32,14 @@ public:
 private:
     std::mt19937_64 rng_;
 };
+
+// Generates `count` random networks of `g` (several at once on all CPU threads,
+// the next batch while the current one is being used) and calls use(k, net)
+// for k = 0..count-1 in order, on the calling thread.  Network k is
+// RandomNetworkGenerator(random_network_seed(base_seed, k)).rewire(g), so the
+// results do not depend on the number of threads.
+std::uint64_t random_network_seed(std::uint64_t base_seed, int k);
+void for_each_random_network(const Csr& g, int count, std::uint64_t base_seed,
+                             const std::function<void(int, const Csr&)>& use);
 
 }  // namespace pagani

@@ -59,7 +59,8 @@ int main(int argc, char** argv) {
             if (nrand > 0 && (want_g || want_k)) {
                 std::cout << "calculating Cp for " << nrand << " random network(s) ..." << std::endl;
                 std::vector<float> tmp;
-                for (int r = 0; r < nrand; ++r) rand_cp.push_back(clustering(gen.rewire(g), type, tmp));
+                for_each_random_network(g, nrand, gen.engine()(),
+                                        [&](int, const Csr& rg) { rand_cp.push_back(clustering(rg, type, tmp)); });
             }
             if (want_g) {
                 std::ofstream o(stem + "_cp.txt");

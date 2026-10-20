@@ -12,6 +12,17 @@
   first could reuse part of the previous subject's data on the GPU (streaming
   mode only).
 
+### Speed
+
+- Random networks (lambda, gamma, Q of random networks) are generated several
+  at a time on all CPU threads, the next batch while the current one is
+  analysed, with a faster edge set (a single rewiring is about 2× faster with
+  identical output; on a 19,574-node network with 2 million edges this was
+  about 80 % of the run time of a 100-random-network analysis). Random network
+  *k* now has its own seed derived from `PAGANI_SEED` and *k*, so results with
+  a fixed `PAGANI_SEED` do not depend on the number of threads but differ from
+  those of 2.1.0 (another sample of random networks; `Maslov` is unchanged).
+
 ## 2.1.0 — 2026-10-17 (maintenance release)
 
 PAGANI 2.1 is a maintenance release of PAGANI 2.0 (HBM 2018). It adds no new

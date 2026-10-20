@@ -101,6 +101,22 @@ def test_clustering_random_and_gamma(tmp_path, graph, weighted):
     assert gamma > 1.5  # modular graph is far more clustered than random
 
 
+def test_random_networks_reproducible(tmp_path, graph, weighted):
+    """Random networks are generated in parallel; with PAGANI_SEED the results
+    must not depend on the number of threads, and differ between seeds."""
+    d, f = make_dir(tmp_path, graph, weighted)
+    args = (d, 6, "g") if not weighted else (d, 6, "2", "g")
+
+    def cp_values(**env):
+        R.run("Cp", weighted, *args, env=env)
+        return open(stem(f) + "_cp.txt").read()
+
+    one = cp_values(PAGANI_SEED="5", PAGANI_THREADS="1")
+    assert cp_values(PAGANI_SEED="5", PAGANI_THREADS="4") == one
+    assert cp_values(PAGANI_SEED="5") == one
+    assert cp_values(PAGANI_SEED="6") != one
+
+
 @pytest.mark.parametrize("tool", ["BFS_MulCPU"])
 def test_efficiency(tmp_path, graph, weighted, tool):
     d, f = make_dir(tmp_path, graph, weighted)

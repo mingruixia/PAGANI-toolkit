@@ -56,13 +56,13 @@ int main(int argc, char** argv) {
             if (nrand > 0) {
                 o << "\n************************* Modularity of Random Networks *************************\n\n";
                 double mean = 0;
-                for (int r = 0; r < nrand; ++r) {
-                    Partition pr = detect(gen.rewire(g), gen.engine());
+                for_each_random_network(g, nrand, gen.engine()(), [&](int r, const Csr& rg) {
+                    Partition pr = detect(rg, gen.engine());
                     mean += pr.q;
                     o << "Random Network " << r + 1 << ":\n";
                     o << "Final Modularity Q = " << fmt6(pr.q) << "\n";
                     o << "Final number of modules : " << pr.num_modules << "\n\n";
-                }
+                });
                 o << "Mean Q of random networks = " << fmt6(mean / nrand) << "\n";
             }
             if (!o) throw Error("cannot write " + stem + "_modu.txt");

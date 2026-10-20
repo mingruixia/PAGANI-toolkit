@@ -48,7 +48,8 @@ inline int lp_main(const char* tool, int argc, char** argv, const EfficiencyFn& 
             std::vector<double> rand_lp;
             if (nrand > 0 && (want_g || want_l)) {
                 std::cout << "calculating Lp for " << nrand << " random network(s) ..." << std::endl;
-                for (int k = 0; k < nrand; ++k) rand_lp.push_back(compute(gen.rewire(g)).lp);
+                for_each_random_network(g, nrand, gen.engine()(),
+                                        [&](int, const Csr& rg) { rand_lp.push_back(compute(rg).lp); });
             }
             if (want_g) {
                 std::ofstream o(stem + "_Lp.txt");
