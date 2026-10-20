@@ -228,10 +228,12 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
   `CUCorMatHr` with sparse thresholds.
 - When the BOLD data do not fit in GPU memory, the construction tools stream
   them block by block (slower but no limit apart from host memory).
-- `CUBFW_Lp` uses a GPU all-pairs algorithm that needs N² × 4 bytes (resident
-  on the GPU when possible, otherwise streamed from host memory); for sparse
-  unweighted networks it automatically uses breadth-first search on the CPU,
-  which needs no distance matrix. `BFS_MulCPU` always uses the CPU.
+- `CUBFW_Lp` computes weighted networks with a GPU all-pairs algorithm
+  (Floyd–Warshall) that needs N² × 4 bytes (resident on the GPU when possible,
+  otherwise streamed from host memory). Unweighted networks use a GPU
+  breadth-first search of 512 sources at a time, which needs no distance
+  matrix (CPU breadth-first search if the network does not fit in GPU memory).
+  `BFS_MulCPU` always uses the CPU.
 - Random networks multiply the cost of Lp, Cp and modularity by (1 + n_random).
 
 ## 7. Environment variables

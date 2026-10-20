@@ -128,17 +128,28 @@ def write_net(tmp_path, A, weighted):
 @pytest.mark.parametrize("weighted", [False, True], ids=["unweighted", "weighted"])
 @pytest.mark.parametrize("streamed", [False, True], ids=["resident", "streamed"])
 def test_path_length_large(tmp_path, weighted, streamed):
-    # n is not a multiple of the tile size; density > 1 % so the unweighted
-    # network also takes the Floyd-Warshall path
+    # n is not a multiple of the tile size (weighted: Floyd-Warshall) nor of
+    # the 512 sources of a GPU BFS batch (unweighted)
     A = R.modular_graph(n=3999, modules=5, p_in=0.04, p_out=0.004, seed=21, weighted=weighted)
     d, stem = write_net(tmp_path, A, weighted)
     env = {"PAGANI_GPU_MEM_LIMIT_MB": "300"} if streamed else {}
     cp = run(lp_tool(), weighted, d, 0, "gn", env=env)
-    if GPU and streamed:
+    if GPU and streamed and weighted:
         assert "streaming" in cp.stdout
     lp, nodal = R.efficiency(A, weighted)
     np.testing.assert_allclose(R.read_nm(stem + "_eff.nm"), nodal, rtol=1e-4, atol=1e-6)
     assert R.read_first_number(stem + "_Lp.txt") == pytest.approx(lp, rel=1e-4)
+
+
+def test_path_length_sparse_unweighted(tmp_path):
+    # density < 1 % (PAGANI 2.0 and 2.1.0 used the CPU here), several BFS
+    # batches, isolated nodes and a separate component
+    A = R.modular_graph(n=2100, modules=6, p_in=0.012, p_out=0.0004, seed=24, isolated=5, extra_component=True)
+    d, stem = write_net(tmp_path, A, False)
+    run(lp_tool(), False, d, 0, "gn")
+    lp, nodal = R.efficiency(A, False)
+    np.testing.assert_allclose(R.read_nm(stem + "_eff.nm"), nodal, rtol=1e-5, atol=1e-7)
+    assert R.read_first_number(stem + "_Lp.txt") == pytest.approx(lp, rel=1e-5)
 
 
 def test_betweenness_large(tmp_path):

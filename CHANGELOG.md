@@ -22,6 +22,11 @@
   *k* now has its own seed derived from `PAGANI_SEED` and *k*, so results with
   a fixed `PAGANI_SEED` do not depend on the number of threads but differ from
   those of 2.1.0 (another sample of random networks; `Maslov` is unchanged).
+- `CUBFW_Lp`, unweighted networks: path length and nodal efficiency are
+  computed on the GPU with a bit-parallel breadth-first search from 512 sources
+  at a time (Then et al. 2014), for every density. 2.1.0 used Floyd–Warshall
+  (density ≥ 1 %) or the CPU (density < 1 %). Results are identical up to
+  floating-point rounding; no N × N distance matrix is needed.
 
 ## 2.1.0 — 2026-10-17 (maintenance release)
 
