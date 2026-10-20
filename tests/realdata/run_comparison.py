@@ -101,7 +101,7 @@ def main():
         for version, pkg in pkgs:
             extra = [("group bf (weighted)", True, "CUCorMat", [a.data, a.mask, a.thr, "bf", "n", "s", a.sparsity]),
                      ("high-res Pearson", True, "CUCorMatHr", [a.data, a.mask, a.thr, "n", "s", "p", a.sparsity])]
-            if version.startswith("2.1"):
+            if not version.startswith(("1.", "2.0")):  # Kendall tool exists from 2.1 on
                 extra.append(("Kendall (all subjects)", True, "CuCorMat-sca-kendall",
                               [a.data, a.mask, a.thr, "n", "s", a.sparsity]))
             for name, weighted, tool, args in extra:
