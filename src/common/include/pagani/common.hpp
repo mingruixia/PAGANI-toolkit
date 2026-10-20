@@ -11,7 +11,7 @@
 
 namespace pagani {
 
-constexpr const char* kVersion = "2.1.0";
+extern const char* const kVersion;  // PROJECT_VERSION of CMakeLists.txt
 
 // All recoverable errors are reported through this exception; tool entry
 // points catch it, print the message and return a non-zero exit code.

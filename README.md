@@ -32,8 +32,9 @@ and start `PAGANI.exe`. Requirements: 64-bit Windows 10/11 and an NVIDIA GPU
 See the [user guide](docs/USER_GUIDE.md).
 
 Version 2.1 is a maintenance release of 2.0 that fixes several calculation
-errors — please read the [changelog](CHANGELOG.md) if you compare with earlier
-results.
+errors; version 2.2 adds further fixes and makes the analyses with random
+networks and several GPU tools much faster — please read the
+[changelog](CHANGELOG.md) if you compare with earlier results.
 
 ## Building from source
 

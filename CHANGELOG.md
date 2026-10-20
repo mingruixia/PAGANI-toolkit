@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 — 2026-10-20
+
+Fixes found in a second review of the 2.1 sources, much faster analyses with
+random networks and several faster GPU tools. No new analyses; command lines
+and file formats are unchanged.
+
+### Results that change compared with 2.1.0
+
+| Affected results | 2.1.0 | 2.2.0 |
+|---|---|---|
+| Weighted metrics of networks with edges of weight ≤ 0 | computed silently (meaningless) | the tools stop with a message |
+| Lambda, gamma, sigma, Q of random networks | each tool used its own random networks | one set of random networks for all; with a fixed `PAGANI_SEED` the values differ from 2.1.0 (another sample) |
+| Newman modularity, unweighted networks | — | nodes with exactly equal gains can be assigned differently (real data: same Q, 25 of 19,574 nodes) |
+
+All other results are unchanged (up to floating-point rounding).
+
+### Fixes
 
 - Weighted tools stop with a clear message when a network contains edges with
   weight ≤ 0 (r ≤ 0). Previously clustering, modularity, eigenvector centrality
@@ -23,6 +39,11 @@
   mode only).
 
 ### Speed
+
+Measured on an RTX 3080 Ti with a 19,574-node network (1 % sparsity): Lp with
+10 random networks 75 → 4 s (unweighted), Cp with 20 random networks 112 → 8 s,
+Louvain with 10 random networks 64 → 11 s, betweenness 19 → 10 s, Newman 24 →
+10 s, unweighted Lp 2.1 → 0.4 s, Kendall construction 2.5× faster.
 
 - Random networks (lambda, gamma, Q of random networks) are generated several
   at a time on all CPU threads, the next batch while the current one is

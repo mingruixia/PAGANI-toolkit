@@ -15,6 +15,9 @@ namespace fs = std::filesystem;
 
 namespace pagani {
 
+const char* const kVersion = PAGANI_TOOLKIT_VERSION;
+
+
 int run_tool(const char* tool_name, int argc, char** argv,
              const std::function<int(int, char**)>& body) {
     std::cout << "PAGANI Toolkit " << kVersion << " - " << tool_name << std::endl;
