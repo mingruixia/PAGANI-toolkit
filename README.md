@@ -30,6 +30,11 @@ Get `PAGANI-Toolkit-<version>-win64.zip` from the
 and start `PAGANI.exe`. Requirements: 64-bit Windows 10/11 and an NVIDIA GPU
 (GTX 10xx or newer, compute capability ≥ 6.1) with a current driver; no CUDA
 installation is needed.
+
+On Linux servers and clusters use `PAGANI-Toolkit-<version>-linux-x64.tar.gz`:
+the same command-line tools (no GUI), for x86-64 Linux with glibc 2.28 or newer
+(RHEL/Rocky/Alma 8, Ubuntu 20.04, Debian 11 and newer) and an NVIDIA driver
+≥ 525.60.13; `example_pipeline.sh` in the package shows a complete analysis.
 See the [user guide](docs/USER_GUIDE.md).
 
 Version 2.1 is a maintenance release of 2.0 that fixes several calculation
@@ -47,6 +52,17 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Q
 cmake --build build
 ctest --test-dir build --output-on-failure
 powershell -File packaging\make_package.ps1 -BuildDir build -OutDir dist
+```
+
+On Linux the release package is built in the `nvidia/cuda:12.6.3-devel-rockylinux8`
+container (see `packaging/linux/setup_build_env.sh` and the `linux-cuda` job of
+`.github/workflows/build.yml`):
+
+```bash
+source packaging/linux/setup_build_env.sh
+cmake -S . -B build -G Ninja -DPAGANI_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build && ctest --test-dir build --output-on-failure
+packaging/make_package.sh build dist
 ```
 
 Options: `-DPAGANI_BUILD_CUDA=OFF` (CPU tools only, also on Linux/macOS),

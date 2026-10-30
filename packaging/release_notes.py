@@ -15,7 +15,9 @@ out = f"""**PAGANI Toolkit {version}**
 
 **Download:** `PAGANI-Toolkit-{version}-win64.zip` below — unzip and run `PAGANI.exe`
 (64-bit Windows 10/11, NVIDIA GPU GTX 10xx or newer with a current driver; no CUDA
-installation needed). User guide: `docs/USER_GUIDE.md` in the package; 中文说明见 `README_zh.md`.
+installation needed). Linux (command-line tools, glibc 2.28 or newer, e.g. RHEL/Rocky 8,
+Ubuntu 20.04): `PAGANI-Toolkit-{version}-linux-x64.tar.gz`.
+User guide: `docs/USER_GUIDE.md` in the package; 中文说明见 `README_zh.md`.
 Validation and comparison with PAGANI 2.0: `docs/VALIDATION_REPORT.md`.
 
 """

@@ -11,6 +11,13 @@
   same names) to those built from the decompressed `.nii` files. A working
   directory with both `sub01.nii` and `sub01.nii.gz` is rejected. Output images
   (`ConvertNII`) remain uncompressed `.nii`.
+- Linux package `PAGANI-Toolkit-<version>-linux-x64.tar.gz` with all
+  command-line tools, including the GPU tools (no GUI), for servers and
+  clusters: x86-64 Linux with glibc 2.28 or newer (RHEL/Rocky/Alma 8, Ubuntu
+  20.04, Debian 11 and newer) and an NVIDIA driver ≥ 525.60.13. Same tool
+  names (without `.exe`), arguments and output files as on Windows;
+  `example_pipeline.sh` shows a complete analysis and `tests/run_validation.sh`
+  validates a package on a Linux GPU machine.
 
 ### Fixes
 

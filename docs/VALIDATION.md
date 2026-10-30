@@ -37,6 +37,16 @@ set PAGANI_TEST_GPU=1
 python -m pytest -v tests
 ```
 
+## Running the validation on Linux
+
+With Python 3.9 or newer, from the source folder:
+
+```bash
+tests/run_validation.sh /path/to/PAGANI-Toolkit-<version>-linux-x64
+```
+
+The report is written to the same files as on Windows.
+
 ## Comparing with results of PAGANI 2.0
 
 Run the same analysis with 2.0 and 2.1 into two folders and compare them:

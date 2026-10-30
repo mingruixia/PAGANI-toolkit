@@ -18,6 +18,8 @@ PAGANI 以每个灰质体素为节点、体素时间序列间经阈值化的相�
 
 运行环境：64 位 Windows 10/11；NVIDIA 显卡（GTX 10 系列及更新，计算能力 ≥ 6.1），并安装较新的显卡驱动（支持 CUDA 12，Windows 驱动版本 ≥ 527.41）；无需安装 CUDA 工具包。
 
+Linux 服务器/集群请下载 `PAGANI-Toolkit-<版本>-linux-x64.tar.gz`：与 Windows 版相同的全部命令行程序（无图形界面），适用于 glibc ≥ 2.28 的 x86-64 Linux（RHEL/Rocky/Alma 8、Ubuntu 20.04、Debian 11 及更新），NVIDIA 驱动 ≥ 525.60.13；包内 `example_pipeline.sh` 给出完整分析流程示例。
+
 基本流程：
 
 1. 将每名被试预处理后的 4D fMRI 图像（`.nii` 或压缩的 `.nii.gz`，每人一个文件）放在同一文件夹（工作目录）中；
@@ -54,7 +56,7 @@ PAGANI 以每个灰质体素为节点、体素时间序列间经阈值化的相�
 
 ## 从源码编译
 
-需要 CMake ≥ 3.21、MSVC 2022、CUDA 12.x 工具包（GPU 程序）和 Qt 5.15 或 6（GUI），命令见 [README.md](README.md#building-from-source)。只编译 CPU 程序（`-DPAGANI_BUILD_CUDA=OFF`）时也可在 Linux/macOS 上编译和测试。
+需要 CMake ≥ 3.21、MSVC 2022、CUDA 12.x 工具包（GPU 程序）和 Qt 5.15 或 6（GUI），命令见 [README.md](README.md#building-from-source)。只编译 CPU 程序（`-DPAGANI_BUILD_CUDA=OFF`）时也可在 Linux/macOS 上编译和测试；Linux 发行包（含 GPU 程序）的编译方法见 [README.md](README.md#building-from-source)。
 
 ## 引用
 
