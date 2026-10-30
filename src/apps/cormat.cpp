@@ -5,6 +5,7 @@
 //   to_save_cormat : y / n  (whole correlation matrix, .cormat)
 //   threshold_type : r (correlation, edges with r > t) or s (sparsity in %)
 //   e.g.  CUCorMat.exe d:\BOLD d:\mask.nii 0.5 n n r 0.2 0.25 0.3
+//   Images (one 4D image per subject) and the mask may be .nii or .nii.gz.
 // Outputs (in Dir_for_BOLD\unweighted or \weighted):
 //   <subject>_<N>_spa<sparsity>%_cor<r>.csr        (unweighted)
 //   <subject>_<N>_spa<sparsity>%_cor<r>_weighted.csr  (weighted)
@@ -43,7 +44,7 @@ int main(int argc, char** argv) {
         ensure_directory(outdir);
         const std::string suffix = kWeighted ? "_weighted.csr" : ".csr";
         auto files = bold_files(dir, mask_path);
-        if (files.empty()) throw Error("no .nii file found in " + dir);
+        if (files.empty()) throw Error("no .nii or .nii.gz image found in " + dir);
 
         std::vector<float> acc, packed;
         if (group || save_cormat) {
@@ -61,7 +62,7 @@ int main(int argc, char** argv) {
             if (!load_subject(path, mask, s)) continue;
             report_flat(backend->load(s.series, s.n, s.l, CorrType::Pearson), s.n);
             ++used;
-            const std::string name = path_without_extension(f) + "_" + std::to_string(n);
+            const std::string name = nifti_stem(f) + "_" + std::to_string(n);
             if (save_cormat && individual) {
                 packed.assign(m, 0.0f);
                 backend->packed(packed.data(), CorrelationBackend::Accumulate::Assign);

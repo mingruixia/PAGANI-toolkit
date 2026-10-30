@@ -47,7 +47,7 @@
 - **文件发现**：建网程序在工作目录中同时识别 `.nii` 与 `.nii.gz`（不区分大小写）；同一被试同时存在两种文件（如 `sub01.nii` 与 `sub01.nii.gz`）时报错并列出冲突文件，而不是任选其一。
 - **输出命名**：被试名去掉完整的 `.nii.gz` 后缀，与 `.nii` 输入时完全相同（`path_without_extension` 增加对双扩展名的处理，并补测试）。
 - **掩模**：`.nii.gz` 掩模同样支持。`ConvertNII` 的输出仍为未压缩 `.nii`（保持兼容）。
-- **GUI**：文件选择对话框接受 `.nii.gz`；工作目录预检显示识别到的被试文件数。
+- **GUI**：掩模文件选择对话框与提示文字接受 `.nii.gz`（识别到的被试文件数由建网程序在运行日志中给出）。
 - **测试**：pytest 用 nibabel 生成 `.nii.gz`（含扩展头、缩放因子、int16），比较与 `.nii` 输入的输出逐字节相同；损坏的 gzip 文件给出明确错误。
 - **说明**：fMRIPrep 的 `desc-preproc_bold` 未做去噪（头动回归、滤波等），不能直接用于建网；手册中给出建议流程（如 XCP-D 的 `desc-denoised_bold.nii.gz` 输出，或 `tests/realdata/prepare_fmriprep.py` 的做法），PAGANI 本身不做预处理。
 

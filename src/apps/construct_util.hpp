@@ -4,7 +4,9 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <algorithm>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,17 +25,26 @@ inline std::unique_ptr<CorrelationBackend> make_backend() {
 #endif
 }
 
-// 4D images to be processed: *.nii in dir, excluding the mask itself and the
-// mask names PAGANI 2.0 skipped.
+// 4D images to be processed: *.nii and *.nii.gz in dir, excluding the mask
+// itself and the mask names PAGANI 2.0 skipped.  Two images with the same
+// subject name (sub01.nii and sub01.nii.gz) would write the same networks: error.
 inline std::vector<std::string> bold_files(const std::string& dir, const std::string& mask_path) {
     auto files = list_files_with_suffix_ci(dir, ".nii");
+    auto gz = list_files_with_suffix_ci(dir, ".nii.gz");
+    files.insert(files.end(), gz.begin(), gz.end());
+    std::sort(files.begin(), files.end());
     const std::string mask_name = to_lower(path_filename(mask_path));
     std::vector<std::string> out;
+    std::map<std::string, std::string> by_stem;
     for (const auto& f : files) {
-        std::string lf = to_lower(f);
-        if (lf == "mask.nii" || lf == "grey_mask.nii" || lf == "1mm_grey.nii" || lf == "1mm_grey_mask.nii") continue;
+        const std::string lf = to_lower(f), stem = nifti_stem(f), ls = to_lower(stem);
+        if (ls == "mask" || ls == "grey_mask" || ls == "1mm_grey" || ls == "1mm_grey_mask") continue;
         std::error_code ec;
         if (lf == mask_name && std::filesystem::equivalent(path_join(dir, f), mask_path, ec)) continue;
+        auto [it, fresh] = by_stem.emplace(stem, f);
+        if (!fresh)
+            throw Error("'" + it->second + "' and '" + f + "' in " + dir +
+                        " have the same subject name; keep only one of them");
         out.push_back(f);
     }
     std::cout << out.size() << " image file(s) to be processed in " << dir << std::endl;

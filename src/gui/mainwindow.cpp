@@ -75,15 +75,15 @@ void MainWindow::buildUi() {
     auto* dataBox = new QGroupBox("Data");
     auto* dataGrid = new QGridLayout(dataBox);
     workingDir_ = new QLineEdit;
-    workingDir_->setPlaceholderText("folder containing the preprocessed 4D fMRI images (.nii)");
-    workingDir_->setToolTip(tip("Folder with one preprocessed 4D NIfTI image (.nii) per subject. Networks are "
+    workingDir_->setPlaceholderText("folder containing the preprocessed 4D fMRI images (.nii or .nii.gz)");
+    workingDir_->setToolTip(tip("Folder with one preprocessed 4D NIfTI image (.nii or .nii.gz) per subject. Networks are "
                                 "written to its <b>unweighted</b> or <b>weighted</b> sub-folder, and all metrics "
                                 "are computed for every network (.csr) found there."));
     auto* wdButton = new QToolButton;
     wdButton->setText("...");
     connect(wdButton, &QToolButton::clicked, this, &MainWindow::browseWorkingDir);
     maskFile_ = new QLineEdit;
-    maskFile_->setPlaceholderText("grey matter mask (.nii) with the same dimensions as the images");
+    maskFile_->setPlaceholderText("grey matter mask (.nii or .nii.gz) with the same dimensions as the images");
     auto* maskButton = new QToolButton;
     maskButton->setText("...");
     connect(maskButton, &QToolButton::clicked, this, &MainWindow::browseMask);
@@ -380,7 +380,7 @@ void MainWindow::browseWorkingDir() {
 
 void MainWindow::browseMask() {
     QString start = maskFile_->text().isEmpty() ? workingDir_->text() : maskFile_->text();
-    QString f = QFileDialog::getOpenFileName(this, "Mask file", start, "NIfTI images (*.nii);;All files (*)");
+    QString f = QFileDialog::getOpenFileName(this, "Mask file", start, "NIfTI images (*.nii *.nii.gz);;All files (*)");
     if (!f.isEmpty()) maskFile_->setText(QDir::toNativeSeparators(f));
 }
 

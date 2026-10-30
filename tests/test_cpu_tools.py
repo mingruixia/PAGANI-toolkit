@@ -244,8 +244,9 @@ def test_smallworld_pairing(tmp_path):
     assert not (d / "lonely_smallWorld.txt").exists()
 
 
+@pytest.mark.parametrize("compressed", [False, True], ids=["nii", "niigz"])
 @pytest.mark.parametrize("variant", ["uint8_scaled", "float_ext", "int16_bigendian"])
-def test_convertnii(tmp_path, variant):
+def test_convertnii(tmp_path, variant, compressed):
     shape = (6, 7, 5)
     rng = np.random.default_rng(0)
     prob = rng.random(shape)
@@ -263,6 +264,12 @@ def test_convertnii(tmp_path, variant):
         maskfile = tmp_path / "mask.nii"
         R.save_nifti(maskfile, raw, big_endian=True, slope=0.001)
         maskval = raw * 0.001
+    if compressed:
+        import gzip
+        gz = tmp_path / "mask.nii.gz"
+        gz.write_bytes(gzip.compress(maskfile.read_bytes()))
+        maskfile.unlink()
+        maskfile = gz
     thr = 0.4
     inmask = (maskval.ravel(order="F") >= thr)
     d = tmp_path / "res"

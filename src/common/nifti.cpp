@@ -5,6 +5,8 @@
 #include <cstring>
 #include <fstream>
 
+#include <zlib.h>
+
 #include "pagani/common.hpp"
 
 namespace pagani {
@@ -120,22 +122,89 @@ void apply_scaling(const NiftiHeader& h, float* v, std::int64_t n) {
     for (std::int64_t i = 0; i < n; ++i) v[i] = v[i] * h.scl_slope + h.scl_inter;
 }
 
-}  // namespace
+// Sequential reader of a .nii or a gzip-compressed .nii.gz image; the format
+// is recognised by the gzip magic bytes, not by the file name.  A gzip stream
+// can only be read forwards, which is all the readers below need.
+class ImageStream {
+public:
+    explicit ImageStream(const std::string& path) : path_(path) {
+        unsigned char magic[2] = {0, 0};
+        {
+            std::ifstream probe(path, std::ios::binary);
+            if (!probe) throw Error("cannot open NIfTI file '" + path + "'");
+            probe.read(reinterpret_cast<char*>(magic), 2);
+        }
+        if (magic[0] == 0x1f && magic[1] == 0x8b) {
+            gz_ = gzopen(path.c_str(), "rb");
+            if (!gz_) throw Error("cannot open NIfTI file '" + path + "'");
+            gzbuffer(gz_, 1u << 20);
+        } else {
+            f_.open(path, std::ios::binary);
+            if (!f_) throw Error("cannot open NIfTI file '" + path + "'");
+        }
+    }
+    ~ImageStream() {
+        if (gz_) gzclose(gz_);
+    }
+    ImageStream(const ImageStream&) = delete;
+    ImageStream& operator=(const ImageStream&) = delete;
 
-std::int64_t NiftiHeader::volumes() const {
-    std::int64_t v = 1;
-    for (int i = 4; i <= dim[0] && i <= 7; ++i) v *= std::max<std::int16_t>(dim[i], 1);
-    return v;
-}
+    bool compressed() const { return gz_ != nullptr; }
 
-NiftiHeader read_nifti_header(const std::string& path) {
-    if (ends_with(to_lower(path), ".gz"))
-        throw Error("'" + path + "': compressed .nii.gz files are not supported, please decompress to .nii");
-    std::ifstream f(path, std::ios::binary);
-    if (!f) throw Error("cannot open NIfTI file '" + path + "'");
+    // Reads up to n bytes; returns the number read (less only at the end of the data).
+    std::uint64_t read_some(void* dst, std::uint64_t n) {
+        char* p = static_cast<char*>(dst);
+        if (!gz_) {
+            f_.read(p, static_cast<std::streamsize>(n));
+            return static_cast<std::uint64_t>(f_.gcount());
+        }
+        std::uint64_t done = 0;
+        while (done < n) {
+            const unsigned chunk = static_cast<unsigned>(std::min<std::uint64_t>(n - done, 1u << 30));
+            const int got = gzread(gz_, p + done, chunk);
+            if (got < 0) {
+                int err = 0;
+                throw Error("'" + path_ + "' is not a valid gzip file or is corrupt (" + gzerror(gz_, &err) + ")");
+            }
+            if (got == 0) break;
+            done += static_cast<std::uint64_t>(got);
+        }
+        return done;
+    }
+
+    // Reads exactly n bytes.
+    void read(void* dst, std::uint64_t n) {
+        if (read_some(dst, n) != n)
+            throw Error(gz_ ? "'" + path_ + "' is truncated (the compressed data ends before the image data)"
+                            : "read error in '" + path_ + "'");
+    }
+
+    // Skips n bytes forwards.
+    void skip(std::uint64_t n) {
+        if (n == 0) return;
+        if (!gz_) {
+            f_.seekg(static_cast<std::streamoff>(n), std::ios::cur);
+            return;
+        }
+        std::vector<char> buf(static_cast<size_t>(std::min<std::uint64_t>(n, 1u << 16)));
+        while (n > 0) {
+            const std::uint64_t m = std::min<std::uint64_t>(n, buf.size());
+            read(buf.data(), m);
+            n -= m;
+        }
+    }
+
+private:
+    std::string path_;
+    std::ifstream f_;
+    gzFile gz_ = nullptr;
+};
+
+// Reads and validates the header; leaves `s` positioned at the image data.
+NiftiHeader read_header(ImageStream& s, const std::string& path) {
     NiftiHeader h;
-    f.read(reinterpret_cast<char*>(h.raw.data()), kNiftiHeaderSize);
-    if (f.gcount() != kNiftiHeaderSize) throw Error("'" + path + "' is too short to be a NIfTI file");
+    if (s.read_some(h.raw.data(), kNiftiHeaderSize) != kNiftiHeaderSize)
+        throw Error("'" + path + "' is too short to be a NIfTI file");
 
     std::int32_t sizeof_hdr = get<std::int32_t>(h.raw.data() + kOffSizeofHdr);
     if (sizeof_hdr != kNiftiHeaderSize) {
@@ -175,27 +244,40 @@ NiftiHeader read_nifti_header(const std::string& path) {
                     datatype_name(h.datatype) + ")");
     if (h.vox_offset < kNiftiVoxOffset - 4 || std::floor(h.vox_offset) != h.vox_offset)
         throw Error("'" + path + "': invalid vox_offset " + std::to_string(h.vox_offset));
-    // Check the file actually contains the declared data.
+    // Check the file actually contains the declared data (the uncompressed size
+    // of a .nii.gz is only known after decompressing it: checked while reading).
     std::uint64_t need = static_cast<std::uint64_t>(h.vox_offset) +
                          static_cast<std::uint64_t>(h.voxels_per_volume()) * h.volumes() * datatype_size(h.datatype);
-    if (file_size(path) < need)
+    if (!s.compressed() && file_size(path) < need)
         throw Error("'" + path + "' is truncated: expected at least " + std::to_string(need) + " bytes");
+    s.skip(static_cast<std::uint64_t>(h.vox_offset) - kNiftiHeaderSize);
     return h;
 }
 
+}  // namespace
+
+std::int64_t NiftiHeader::volumes() const {
+    std::int64_t v = 1;
+    for (int i = 4; i <= dim[0] && i <= 7; ++i) v *= std::max<std::int16_t>(dim[i], 1);
+    return v;
+}
+
+NiftiHeader read_nifti_header(const std::string& path) {
+    ImageStream s(path);
+    return read_header(s, path);
+}
+
 std::vector<float> read_nifti_float(const std::string& path, NiftiHeader* hdr_out) {
-    NiftiHeader h = read_nifti_header(path);
+    ImageStream f(path);
+    NiftiHeader h = read_header(f, path);
     const std::int64_t n = h.voxels_per_volume() * h.volumes();
     const int sz = datatype_size(h.datatype);
-    std::ifstream f(path, std::ios::binary);
-    f.seekg(static_cast<std::streamoff>(h.vox_offset));
     std::vector<float> out(static_cast<size_t>(n));
     const std::int64_t chunk = 1 << 22;
     std::vector<unsigned char> buf(static_cast<size_t>(std::min(n, chunk) * sz));
     for (std::int64_t off = 0; off < n; off += chunk) {
         std::int64_t m = std::min(chunk, n - off);
-        f.read(reinterpret_cast<char*>(buf.data()), m * sz);
-        if (f.gcount() != m * sz) throw Error("read error in '" + path + "'");
+        f.read(buf.data(), static_cast<std::uint64_t>(m * sz));
         convert_to_float(buf.data(), m, h.datatype, h.swapped, out.data() + off);
     }
     apply_scaling(h, out.data(), n);
@@ -205,20 +287,18 @@ std::vector<float> read_nifti_float(const std::string& path, NiftiHeader* hdr_ou
 
 std::vector<float> read_nifti_masked(const std::string& path, const std::vector<std::int64_t>& indices,
                                      NiftiHeader* hdr_out) {
-    NiftiHeader h = read_nifti_header(path);
+    ImageStream f(path);
+    NiftiHeader h = read_header(f, path);
     const std::int64_t nvox = h.voxels_per_volume();
     const std::int64_t nvol = h.volumes();
     const int sz = datatype_size(h.datatype);
     for (auto k : indices)
         if (k < 0 || k >= nvox) throw Error("'" + path + "': mask index out of range (mask and data dimensions differ?)");
-    std::ifstream f(path, std::ios::binary);
-    f.seekg(static_cast<std::streamoff>(h.vox_offset));
     std::vector<unsigned char> raw(static_cast<size_t>(nvox * sz));
     std::vector<float> vol(static_cast<size_t>(nvox));
     std::vector<float> out(static_cast<size_t>(nvol) * indices.size());
     for (std::int64_t t = 0; t < nvol; ++t) {
-        f.read(reinterpret_cast<char*>(raw.data()), nvox * sz);
-        if (f.gcount() != nvox * sz) throw Error("read error in '" + path + "'");
+        f.read(raw.data(), static_cast<std::uint64_t>(nvox * sz));
         convert_to_float(raw.data(), nvox, h.datatype, h.swapped, vol.data());
         float* dst = out.data() + t * indices.size();
         for (size_t i = 0; i < indices.size(); ++i) dst[i] = vol[static_cast<size_t>(indices[i])];
@@ -226,6 +306,11 @@ std::vector<float> read_nifti_masked(const std::string& path, const std::vector<
     apply_scaling(h, out.data(), static_cast<std::int64_t>(out.size()));
     if (hdr_out) *hdr_out = h;
     return out;
+}
+
+std::string nifti_stem(const std::string& path) {
+    if (ends_with(to_lower(path), ".nii.gz")) return path.substr(0, path.size() - 7);
+    return path_without_extension(path);
 }
 
 Mask load_mask(const std::string& path, double threshold) {

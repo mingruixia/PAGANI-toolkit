@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### New
+
+- Images and masks can be gzip-compressed (`.nii.gz`, e.g. the outputs of
+  fMRIPrep or XCP-D): all tools read them directly, decompressing while
+  reading without temporary files. The subject name is the file name without
+  `.nii.gz`, so the networks and all other outputs are identical (same files,
+  same names) to those built from the decompressed `.nii` files. A working
+  directory with both `sub01.nii` and `sub01.nii.gz` is rejected. Output images
+  (`ConvertNII`) remain uncompressed `.nii`.
+
 ### Fixes
 
 - The GPU tools did not run on Volta (Titan V, Quadro GV100, Tesla V100;

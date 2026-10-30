@@ -37,13 +37,19 @@ docs\                      this guide, the validation guide, the paper
 
 ## 2. Preparing data
 
-- **One preprocessed 4D NIfTI-1 image per subject** (`.nii`, uncompressed),
-  all in one folder — the *working directory*. Typical preprocessing:
+- **One preprocessed 4D NIfTI-1 image per subject** (`.nii` or gzip-compressed
+  `.nii.gz`), all in one folder — the *working directory*. Typical preprocessing:
   slice timing, realignment, normalisation to a template, nuisance regression,
   band-pass filtering. All images must have the same dimensions and number of
-  time points ≥ 3. Every `.nii` file in the working directory is treated as a
-  subject, except the mask file.
-- **A mask** with the same x/y/z dimensions, e.g. a grey-matter probability map
+  time points ≥ 3. Every `.nii` and `.nii.gz` file in the working directory is
+  treated as a subject, except the mask file; the subject name is the file name
+  without `.nii`/`.nii.gz`, so `sub01.nii` and `sub01.nii.gz` give the same
+  output names (both in one folder is an error). Compressed images are
+  decompressed while they are read, without temporary files.
+- Outputs of fMRIPrep (`desc-preproc_bold`) are not yet denoised: apply nuisance
+  regression and band-pass filtering first (e.g. XCP-D, whose
+  `desc-denoised_bold.nii.gz` files can be used directly).
+- **A mask** (`.nii` or `.nii.gz`) with the same x/y/z dimensions, e.g. a grey-matter probability map
   resampled to the functional resolution. Voxels whose mask value is greater
   than or equal to the *mask threshold* are the network nodes (for a binary
   mask use a threshold such as 0.5).
@@ -255,7 +261,9 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
 |---|---|
 | *no usable NVIDIA GPU found* | install the current NVIDIA driver; the GPU tools require a CUDA 12 compatible driver |
 | *… and the mask (…) have different dimensions* | resample the mask to the functional images |
-| *unsupported NIfTI datatype*, *compressed .nii.gz files are not supported*, *.hdr/.img pair* | convert the image to a single uncompressed float32 or int16 `.nii` file (e.g. with SPM, FSL or nibabel) |
+| *unsupported NIfTI datatype*, *.hdr/.img pair*, *NIfTI-2 file* | convert the image to a single float32 or int16 NIfTI-1 `.nii` or `.nii.gz` file (e.g. with SPM, FSL or nibabel) |
+| *is truncated*, *not a valid gzip file or is corrupt* | the image file is incomplete or damaged (e.g. an interrupted copy or download); copy or export it again |
+| *have the same subject name* | the working directory contains the same subject twice (e.g. `sub01.nii` and `sub01.nii.gz`); keep only one |
 | *contains NaN or Inf values inside the mask* | use a mask that excludes voxels without signal, or replace NaN by 0 and exclude those voxels from the mask |
 | *not enough host memory for the distance matrix* | use `BFS_MulCPU` for Lp, or fewer nodes |
 | *… voxels have a constant time series* | check the mask/brain coverage; these nodes are isolated |

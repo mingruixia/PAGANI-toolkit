@@ -3,6 +3,7 @@
 // CUCorMatHr.exe Dir_for_BOLD mask.nii mask_threshold to_average(n) threshold_type coefficient thresholds...
 //   coefficient: p (Pearson), s (Spearman), ps / sp (both)
 //   e.g. CUCorMatHr.exe d:\BOLD d:\mask.nii 0.2 n s p 0.1
+//   Images (one 4D image per subject) and the mask may be .nii or .nii.gz.
 //   output: Dir\weighted\<subject>_<N>_pearson_spa..%_cor.._weighted.csr  (or \unweighted\..._unweighted.csr)
 //
 // CuCorMat-sca-kendall.exe Dir_for_BOLD mask.nii mask_threshold to_average(n) threshold_type thresholds...
@@ -57,7 +58,7 @@ int main(int argc, char** argv) {
         ensure_directory(outdir);
         const std::string suffix = kWeighted ? "_weighted.csr" : "_unweighted.csr";
         auto files = bold_files(dir, mask_path);
-        if (files.empty()) throw Error("no .nii file found in " + dir);
+        if (files.empty()) throw Error("no .nii or .nii.gz image found in " + dir);
         auto backend = make_backend();
         int used = 0;
         for (const auto& f : files) {
@@ -72,7 +73,7 @@ int main(int argc, char** argv) {
                 // each coefficient starts from the original data (audit C-02)
                 report_flat(backend->load(s.series, s.n, s.l, type), s.n);
                 const std::string stem =
-                    path_join(outdir, path_without_extension(f) + "_" + std::to_string(n) + "_" + corr_name(type));
+                    path_join(outdir, nifti_stem(f) + "_" + std::to_string(n) + "_" + corr_name(type));
                 build_networks(*backend, thresholds, kWeighted,
                                [&](ThresholdedNetwork& net) { write_network(stem, net, suffix, kWeighted); });
                 std::cout << "done in " << fmt6(t.seconds()) << " s" << std::endl;
