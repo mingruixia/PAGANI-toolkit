@@ -28,7 +28,8 @@ scripts and servers.
 Get `PAGANI-Toolkit-<version>-win64.zip` from the
 [Releases](https://github.com/mingruixia/PAGANI-toolkit/releases) page, unzip
 and start `PAGANI.exe`. Requirements: 64-bit Windows 10/11 and an NVIDIA GPU
-(GTX 10xx or newer) with a current driver; no CUDA installation is needed.
+(GTX 10xx or newer, compute capability ≥ 6.1) with a current driver; no CUDA
+installation is needed.
 See the [user guide](docs/USER_GUIDE.md).
 
 Version 2.1 is a maintenance release of 2.0 that fixes several calculation

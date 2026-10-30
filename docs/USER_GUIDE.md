@@ -18,13 +18,14 @@ Contents: [1 Installation](#1-installation) · [2 Preparing data](#2-preparing-d
 Requirements
 
 - Windows 10/11, 64-bit
-- An NVIDIA GPU of the Pascal generation (GeForce GTX 10xx) or newer, with a
+- An NVIDIA GPU of the Pascal generation (GeForce GTX 10xx) or newer, i.e.
+  compute capability 6.1 or higher (Tesla P100, 6.0, is not supported), with a
   current driver (CUDA 12 compatible, version 527.41 or later). Only network
   construction, Lp (`CUBFW_Lp`), betweenness, eigenvector centrality and the
   Newman modularity tool use the GPU; every other tool runs on the CPU.
 - Enough host memory for the networks you build (see section 6).
 
-Unzip `PAGANI-Toolkit-2.1.0-win64.zip` anywhere (no installation, no CUDA
+Unzip `PAGANI-Toolkit-<version>-win64.zip` anywhere (no installation, no CUDA
 toolkit needed) and start `PAGANI.exe`. The folder layout must be kept:
 
 ```

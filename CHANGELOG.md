@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- The GPU tools did not run on Volta (Titan V, Quadro GV100, Tesla V100;
+  compute capability 7.0) and A100/A30 (8.0) GPUs ("no kernel image is
+  available"): the package contained machine code for sm_61, 75, 86, 89 and
+  90 only, which cannot run on these GPUs. sm_70 and sm_80 are now included.
+  Tesla P100 (6.0) remains unsupported. Results are unchanged.
+
 ## 2.2.0 — 2026-10-20
 
 Fixes found in a second review of the 2.1 sources, much faster analyses with

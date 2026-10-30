@@ -16,7 +16,7 @@ PAGANI 以每个灰质体素为节点、体素时间序列间经阈值化的相�
 
 在 [Releases](https://github.com/mingruixia/PAGANI-toolkit/releases) 页面下载 `PAGANI-Toolkit-<版本>-win64.zip`，解压后直接运行 `PAGANI.exe`，无需安装。
 
-运行环境：64 位 Windows 10/11；NVIDIA 显卡（GTX 10 系列及更新），并安装较新的显卡驱动（支持 CUDA 12，Windows 驱动版本 ≥ 527.41）；无需安装 CUDA 工具包。
+运行环境：64 位 Windows 10/11；NVIDIA 显卡（GTX 10 系列及更新，计算能力 ≥ 6.1），并安装较新的显卡驱动（支持 CUDA 12，Windows 驱动版本 ≥ 527.41）；无需安装 CUDA 工具包。
 
 基本流程：
 
