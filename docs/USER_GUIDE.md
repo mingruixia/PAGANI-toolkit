@@ -1,4 +1,4 @@
-# PAGANI Toolkit 2.1 — User Guide
+# PAGANI Toolkit — User Guide
 
 PAGANI (**PA**rallel **G**raph-theoretical **AN**alysIs) Toolkit builds
 voxel-wise functional brain networks from resting-state fMRI and computes their
@@ -17,14 +17,26 @@ Contents: [1 Installation](#1-installation) · [2 Preparing data](#2-preparing-d
 
 Requirements
 
-- Windows 10/11, 64-bit
-- An NVIDIA GPU of the Pascal generation (GeForce GTX 10xx) or newer, with a
-  current driver (CUDA 12 compatible, version 527.41 or later). Only network
+- Windows 10/11, 64-bit, or x86-64 Linux with glibc 2.28 or newer (command-line
+  tools only)
+- An NVIDIA GPU of the Pascal generation (GeForce GTX 10xx) or newer, i.e.
+  compute capability 6.1 or higher (Tesla P100, 6.0, is not supported), with a
+  current driver (CUDA 12 compatible: 527.41 or later on Windows, 525.60.13 or
+  later on Linux). Only network
   construction, Lp (`CUBFW_Lp`), betweenness, eigenvector centrality and the
   Newman modularity tool use the GPU; every other tool runs on the CPU.
 - Enough host memory for the networks you build (see section 6).
 
-Unzip `PAGANI-Toolkit-2.1.0-win64.zip` anywhere (no installation, no CUDA
+**Linux** (command-line tools only): unpack
+`PAGANI-Toolkit-<version>-linux-x64.tar.gz` (`tar xzf …`). It needs x86-64
+Linux with glibc 2.28 or newer (RHEL/Rocky/Alma 8, Ubuntu 20.04, Debian 11 and
+newer) and an NVIDIA driver ≥ 525.60.13; no CUDA toolkit. The tools have the
+same names (without `.exe`), arguments and outputs as on Windows, in the same
+`exefiles/` and `exefiles_weighted/` folders; `example_pipeline.sh` is a
+complete example analysis. Use `CUDA_VISIBLE_DEVICES` or `PAGANI_GPU` to choose
+the GPU on multi-GPU nodes.
+
+**Windows**: unzip `PAGANI-Toolkit-<version>-win64.zip` anywhere (no installation, no CUDA
 toolkit needed) and start `PAGANI.exe`. The folder layout must be kept:
 
 ```
@@ -36,13 +48,19 @@ docs\                      this guide, the validation guide, the paper
 
 ## 2. Preparing data
 
-- **One preprocessed 4D NIfTI-1 image per subject** (`.nii`, uncompressed),
-  all in one folder — the *working directory*. Typical preprocessing:
+- **One preprocessed 4D NIfTI-1 image per subject** (`.nii` or gzip-compressed
+  `.nii.gz`), all in one folder — the *working directory*. Typical preprocessing:
   slice timing, realignment, normalisation to a template, nuisance regression,
   band-pass filtering. All images must have the same dimensions and number of
-  time points ≥ 3. Every `.nii` file in the working directory is treated as a
-  subject, except the mask file.
-- **A mask** with the same x/y/z dimensions, e.g. a grey-matter probability map
+  time points ≥ 3. Every `.nii` and `.nii.gz` file in the working directory is
+  treated as a subject, except the mask file; the subject name is the file name
+  without `.nii`/`.nii.gz`, so `sub01.nii` and `sub01.nii.gz` give the same
+  output names (both in one folder is an error). Compressed images are
+  decompressed while they are read, without temporary files.
+- Outputs of fMRIPrep (`desc-preproc_bold`) are not yet denoised: apply nuisance
+  regression and band-pass filtering first (e.g. XCP-D, whose
+  `desc-denoised_bold.nii.gz` files can be used directly).
+- **A mask** (`.nii` or `.nii.gz`) with the same x/y/z dimensions, e.g. a grey-matter probability map
   resampled to the functional resolution. Voxels whose mask value is greater
   than or equal to the *mask threshold* are the network nodes (for a binary
   mask use a threshold such as 0.5).
@@ -254,7 +272,9 @@ fid = fopen('sub01_..._deg.nm'); n = fread(fid, 1, 'int32'); v = fread(fid, n, '
 |---|---|
 | *no usable NVIDIA GPU found* | install the current NVIDIA driver; the GPU tools require a CUDA 12 compatible driver |
 | *… and the mask (…) have different dimensions* | resample the mask to the functional images |
-| *unsupported NIfTI datatype*, *compressed .nii.gz files are not supported*, *.hdr/.img pair* | convert the image to a single uncompressed float32 or int16 `.nii` file (e.g. with SPM, FSL or nibabel) |
+| *unsupported NIfTI datatype*, *.hdr/.img pair*, *NIfTI-2 file* | convert the image to a single float32 or int16 NIfTI-1 `.nii` or `.nii.gz` file (e.g. with SPM, FSL or nibabel) |
+| *is truncated*, *not a valid gzip file or is corrupt* | the image file is incomplete or damaged (e.g. an interrupted copy or download); copy or export it again |
+| *have the same subject name* | the working directory contains the same subject twice (e.g. `sub01.nii` and `sub01.nii.gz`); keep only one |
 | *contains NaN or Inf values inside the mask* | use a mask that excludes voxels without signal, or replace NaN by 0 and exclude those voxels from the mask |
 | *not enough host memory for the distance matrix* | use `BFS_MulCPU` for Lp, or fewer nodes |
 | *… voxels have a constant time series* | check the mask/brain coverage; these nodes are isolated |

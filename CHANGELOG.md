@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.3.0 — 2026-10-30
+
+Compressed input images, a Linux package for servers and clusters, and GPU
+support for Volta and A100. No new analyses; command lines, file formats and
+all results are unchanged (identical to 2.2.0).
+
+### New
+
+- Images and masks can be gzip-compressed (`.nii.gz`, e.g. the outputs of
+  fMRIPrep or XCP-D): all tools read them directly, decompressing while
+  reading without temporary files. The subject name is the file name without
+  `.nii.gz`, so the networks and all other outputs are identical (same files,
+  same names) to those built from the decompressed `.nii` files. A working
+  directory with both `sub01.nii` and `sub01.nii.gz` is rejected. Output images
+  (`ConvertNII`) remain uncompressed `.nii`.
+- Linux package `PAGANI-Toolkit-<version>-linux-x64.tar.gz` with all
+  command-line tools, including the GPU tools (no GUI), for servers and
+  clusters: x86-64 Linux with glibc 2.28 or newer (RHEL/Rocky/Alma 8, Ubuntu
+  20.04, Debian 11 and newer) and an NVIDIA driver ≥ 525.60.13. Same tool
+  names (without `.exe`), arguments and output files as on Windows;
+  `example_pipeline.sh` shows a complete analysis and `tests/run_validation.sh`
+  validates a package on a Linux GPU machine.
+
+### Fixes
+
+- The GPU tools did not run on Volta (Titan V, Quadro GV100, Tesla V100;
+  compute capability 7.0) and A100/A30 (8.0) GPUs ("no kernel image is
+  available"): the package contained machine code for sm_61, 75, 86, 89 and
+  90 only, which cannot run on these GPUs. sm_70 and sm_80 are now included.
+  Tesla P100 (6.0) remains unsupported. Results are unchanged.
+
 ## 2.2.0 — 2026-10-20
 
 Fixes found in a second review of the 2.1 sources, much faster analyses with

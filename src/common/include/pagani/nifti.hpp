@@ -1,4 +1,5 @@
 // PAGANI Toolkit - minimal NIfTI-1 (.nii single file) reader/writer.
+// Images may also be gzip-compressed (.nii.gz); output is always uncompressed.
 //
 // Fixes over PAGANI 2.0 (audit N-01/N-02):
 //  * data type taken from `datatype` (not `bitpix`); uint8/int8/int16/uint16/
@@ -53,6 +54,9 @@ std::vector<float> read_nifti_float(const std::string& path, NiftiHeader* hdr_ou
 // a time so that very large 4D files do not need to fit in memory twice.
 std::vector<float> read_nifti_masked(const std::string& path, const std::vector<std::int64_t>& indices,
                                      NiftiHeader* hdr_out = nullptr);
+
+// File name without its .nii or .nii.gz extension (any case): the subject name.
+std::string nifti_stem(const std::string& path);
 
 // Mask: voxels whose (scaled) value >= threshold, in NIfTI voxel order.
 struct Mask {

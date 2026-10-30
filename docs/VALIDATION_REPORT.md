@@ -118,3 +118,20 @@ Run times for the 8 networks (seconds):
 
 The analyses with random networks were timed with `tests/realdata/benchmark.py`
 on one network (CHANGELOG, 2.2.0 "Speed").
+
+## 5. PAGANI 2.3.0
+
+Date: 2026-10-30 · build: develop @ `3670eea` (`dev-build` packages).
+
+**Windows GPU test suite** (`tests/run_validation.bat`, RTX 3080 Ti, driver
+621.01): **88 passed, 2 skipped** (GUI end-to-end tests, which pass in CI),
+including the new `.nii.gz` tests (construction from compressed images gives
+byte-identical networks and file names; truncated and corrupt files are
+reported).
+
+**Linux package** (`PAGANI-Toolkit-2.3.0-linux-x64.tar.gz`, built in Rocky
+Linux 8 with CUDA 12.6): the binaries need GLIBC ≤ 2.27 and GLIBCXX ≤ 3.4.22
+(checked on Rocky Linux 8); CPU test suite in CI; GPU test suite
+(`tests/run_validation.sh`) passed on a Linux GPU machine.
+
+2.3.0 changes no calculation; all results are identical to 2.2.0.

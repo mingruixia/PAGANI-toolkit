@@ -16,16 +16,22 @@ PAGANI 以每个灰质体素为节点、体素时间序列间经阈值化的相�
 
 在 [Releases](https://github.com/mingruixia/PAGANI-toolkit/releases) 页面下载 `PAGANI-Toolkit-<版本>-win64.zip`，解压后直接运行 `PAGANI.exe`，无需安装。
 
-运行环境：64 位 Windows 10/11；NVIDIA 显卡（GTX 10 系列及更新），并安装较新的显卡驱动（支持 CUDA 12，Windows 驱动版本 ≥ 527.41）；无需安装 CUDA 工具包。
+运行环境：64 位 Windows 10/11；NVIDIA 显卡（GTX 10 系列及更新，计算能力 ≥ 6.1），并安装较新的显卡驱动（支持 CUDA 12，Windows 驱动版本 ≥ 527.41）；无需安装 CUDA 工具包。
+
+Linux 服务器/集群请下载 `PAGANI-Toolkit-<版本>-linux-x64.tar.gz`：与 Windows 版相同的全部命令行程序（无图形界面），适用于 glibc ≥ 2.28 的 x86-64 Linux（RHEL/Rocky/Alma 8、Ubuntu 20.04、Debian 11 及更新），NVIDIA 驱动 ≥ 525.60.13；包内 `example_pipeline.sh` 给出完整分析流程示例。
 
 基本流程：
 
-1. 将每名被试预处理后的 4D fMRI 图像（未压缩 `.nii`，每人一个文件）放在同一文件夹（工作目录）中；
+1. 将每名被试预处理后的 4D fMRI 图像（`.nii` 或压缩的 `.nii.gz`，每人一个文件）放在同一文件夹（工作目录）中；
 2. 准备与功能像同尺寸的灰质掩模，设置掩模阈值（掩模值 ≥ 阈值的体素作为节点）；
 3. 在界面中选择网络类型、阈值和需要计算的指标，点击 **Run**；右侧日志实时显示各程序输出，出错时自动停止并提示原因；
 4. 也可用 **Save Script…** 保存批处理脚本，在其他电脑或服务器上运行；**Load Script…** 可恢复全部设置（兼容 1.x/2.0 保存的脚本）。
 
 命令行参数、输出文件格式、内存需求和常见问题见[使用手册](docs/USER_GUIDE.md)。
+
+## 2.3 版说明
+
+2.3 新增：直接读取压缩的 `.nii.gz` 图像和掩模（如 fMRIPrep、XCP-D 的输出），结果与解压后的 `.nii` 完全相同；Linux 命令行版（含 GPU 程序，适用于服务器和集群）；GPU 程序支持 Volta（Titan V、V100）和 A100 显卡。命令行参数、文件格式和所有计算结果与 2.2.0 相同。详见 [CHANGELOG](CHANGELOG.md)。
 
 ## 2.2 版说明
 
@@ -54,7 +60,7 @@ PAGANI 以每个灰质体素为节点、体素时间序列间经阈值化的相�
 
 ## 从源码编译
 
-需要 CMake ≥ 3.21、MSVC 2022、CUDA 12.x 工具包（GPU 程序）和 Qt 5.15 或 6（GUI），命令见 [README.md](README.md#building-from-source)。只编译 CPU 程序（`-DPAGANI_BUILD_CUDA=OFF`）时也可在 Linux/macOS 上编译和测试。
+需要 CMake ≥ 3.21、MSVC 2022、CUDA 12.x 工具包（GPU 程序）和 Qt 5.15 或 6（GUI），命令见 [README.md](README.md#building-from-source)。只编译 CPU 程序（`-DPAGANI_BUILD_CUDA=OFF`）时也可在 Linux/macOS 上编译和测试；Linux 发行包（含 GPU 程序）的编译方法见 [README.md](README.md#building-from-source)。
 
 ## 引用
 

@@ -1,8 +1,10 @@
 enable_language(CUDA)
 find_package(CUDAToolkit REQUIRED)
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "52")
-  # Pascal .. Hopper/Ada, plus PTX for newer GPUs
-  set(CMAKE_CUDA_ARCHITECTURES 61-real 75-real 86-real 89-real 90)
+  # Pascal .. Hopper/Ada, plus PTX for newer GPUs.  Machine code runs only on GPUs
+  # of the same major version with an equal or higher minor version, so Volta (7.0)
+  # and A100 (8.0) need their own entries; 6.0 (P100) lacks __dp4a (Kendall).
+  set(CMAKE_CUDA_ARCHITECTURES 61-real 70-real 75-real 80-real 86-real 89-real 90)
 endif()
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)

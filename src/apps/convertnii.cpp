@@ -1,6 +1,6 @@
 // ConvertNII.exe dir mask.nii [mask_threshold(default 0.5)]
 // Converts every nodal metric file (*.nm) in dir into a 3D NIfTI image
-// (<file>.nii) using the mask that was used to build the networks.
+// (<file>.nii) using the mask that was used to build the networks (.nii or .nii.gz).
 #include "app_util.hpp"
 #include "pagani/nifti.hpp"
 
