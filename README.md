@@ -39,7 +39,9 @@ See the [user guide](docs/USER_GUIDE.md).
 
 Version 2.1 is a maintenance release of 2.0 that fixes several calculation
 errors; version 2.2 adds further fixes and makes the analyses with random
-networks and several GPU tools much faster — please read the
+networks and several GPU tools much faster; version 2.3 reads compressed
+`.nii.gz` images, adds the Linux package and supports Volta/A100 GPUs, with
+unchanged results — please read the
 [changelog](CHANGELOG.md) if you compare with earlier results.
 
 ## Building from source

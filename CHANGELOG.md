@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 2.3.0 — 2026-10-30
+
+Compressed input images, a Linux package for servers and clusters, and GPU
+support for Volta and A100. No new analyses; command lines, file formats and
+all results are unchanged (identical to 2.2.0).
 
 ### New
 
