@@ -44,6 +44,12 @@ pagani_tool(newman_cpu_unweighted Newman_Modularity_CPU unweighted SOURCES modul
 pagani_tool(newman_cpu_weighted   Newman_Modularity_CPU weighted   SOURCES modularity.cpp
             DEFS PAGANI_NEWMAN PAGANI_MODULARITY_TOOL="Newman_Modularity_CPU")
 
+pagani_tool(local_efficiency LocalEfficiency unweighted SOURCES local_efficiency.cpp)
+pagani_tool(local_efficiency_weighted LocalEfficiency weighted SOURCES local_efficiency.cpp)
+
+# The weighted betweenness CPU reference also runs without CUDA.
+pagani_tool(cubc_weighted_cpu CUBC weighted SOURCES betweenness.cpp DEFS PAGANI_CPU_BACKEND)
+
 # CPU-backend builds of the construction tools for the test-suite
 if(PAGANI_BUILD_TESTS)
   foreach(v unweighted weighted)

@@ -124,6 +124,7 @@ void write_nm(const std::string& path, const std::vector<float>& values) {
     std::int32_t n = static_cast<std::int32_t>(values.size());
     f.write(reinterpret_cast<const char*>(&n), 4);
     f.write(reinterpret_cast<const char*>(values.data()), static_cast<std::streamsize>(4ull * values.size()));
+    f.close();
     if (!f) throw Error("write error on '" + path + "'");
 }
 

@@ -92,7 +92,16 @@ int main(int argc, char** argv) {
     cp = find(cmds, "Cp");
     CHECK(cp && cp->args.size() == 4 && cp->args[2] == "2");
     s.betweenness = true;
-    CHECK(!validate(s).isEmpty());  // BC not available for weighted networks
+    CHECK(validate(s).isEmpty());
+    for (const QString& backend : QStringList{"auto", "cpu", "gpu", "calibrate"}) {
+        s.bcBackend = backend;
+        s.bcThreads = 4;
+        const auto commands = buildCommands(s, appDir);
+        const auto* bc = find(commands, backend == "cpu" || backend == "auto" ? "CUBC" : "CUBC_GPU");
+        CHECK(bc && bc->args.contains(backend) && bc->args.last() == "4");
+        Settings back;
+        CHECK(parseScript(buildScript(s, appDir), back, nullptr) && same(s, back));
+    }
     s.betweenness = false;
 
     // G-03: nodal efficiency alone still converts to NIfTI

@@ -192,3 +192,21 @@ def test_eigenvector_large(tmp_path, weighted):
     lam, v = R.eigenvector(A)
     np.testing.assert_allclose(R.read_nm(stem + "_ec.nm"), v, atol=2e-4)
     assert R.read_first_number(stem + "_evalue.txt") == pytest.approx(lam, rel=1e-4)
+
+@pytest.mark.skipif(not GPU, reason="requires CUDA weighted betweenness")
+def test_weighted_betweenness_dense_rows_and_source_batches(tmp_path):
+    # K64,64 gives 64 equally short paths between each same-side pair.
+    # The separate diamond, chain and isolate also exercise partial frontiers.
+    side = 64
+    start = 2 * side
+    graph = np.zeros((start + 8, start + 8), dtype=np.float32)
+    graph[:side, side:start] = graph[side:start, :side] = 1
+    for u, v in [(0, 1), (0, 2), (1, 3), (2, 3), (4, 5), (5, 6)]:
+        graph[start + u, start + v] = graph[start + v, start + u] = 1
+    directory, stem = write_net(tmp_path, graph, True)
+    run("CUBC", True, directory)
+    cpu = R.read_nm(stem + "_bc.nm")
+    expected = np.r_[np.full(start, side - 1), [1, 1, 1, 1, 0, 2, 0, 0]]
+    np.testing.assert_array_equal(cpu, expected)
+    run("CUBC_GPU", True, directory, env={"PAGANI_GPU_MEM_LIMIT_MB": "1"})
+    np.testing.assert_array_equal(R.read_nm(stem + "_bc.nm"), cpu)

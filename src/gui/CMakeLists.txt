@@ -29,6 +29,10 @@ set_target_properties(pagani_gui PROPERTIES OUTPUT_NAME PAGANI
 install(TARGETS pagani_gui RUNTIME DESTINATION .)
 
 if(PAGANI_BUILD_TESTS)
+  add_executable(test_gui_bc_widget test_bc_widget.cpp mainwindow.cpp mainwindow.hpp resources.qrc)
+  target_link_libraries(test_gui_bc_widget PRIVATE pagani_gui_core Qt${QT_VERSION_MAJOR}::Widgets)
+  target_compile_definitions(test_gui_bc_widget PRIVATE PAGANI_VERSION="${PROJECT_VERSION}")
+  add_test(NAME gui_bc_widget COMMAND test_gui_bc_widget -platform offscreen)
   add_executable(test_gui_pipeline test_pipeline.cpp)
   target_link_libraries(test_gui_pipeline PRIVATE pagani_gui_core)
   add_test(NAME gui_pipeline COMMAND test_gui_pipeline ${CMAKE_SOURCE_DIR}/legacy/software_package-2.0)

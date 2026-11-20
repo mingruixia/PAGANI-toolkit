@@ -69,6 +69,8 @@ QString Settings::toJson() const {
     o["randomNetworks"] = randomNetworks;
     o["nodalEfficiency"] = nodalEfficiency;
     o["betweenness"] = betweenness;
+    o["bcBackend"] = bcBackend;
+    o["bcThreads"] = bcThreads;
     o["nodalCp"] = nodalCp;
     o["degree"] = degree;
     o["eigenvector"] = eigenvector;
@@ -104,6 +106,8 @@ bool Settings::fromJson(const QString& json, Settings& s) {
     t.randomNetworks = o["randomNetworks"].toString(t.randomNetworks);
     t.nodalEfficiency = o["nodalEfficiency"].toBool();
     t.betweenness = o["betweenness"].toBool();
+    t.bcBackend = o["bcBackend"].toString("auto");
+    t.bcThreads = o["bcThreads"].toInt();
     t.nodalCp = o["nodalCp"].toBool();
     t.degree = o["degree"].toBool();
     t.eigenvector = o["eigenvector"].toBool();
@@ -170,7 +174,9 @@ QStringList validate(const Settings& s) {
     }
     if (s.sigma && !(s.gamma && s.lambda)) e << "Small-world sigma requires gamma and lambda.";
     if (s.participation && !s.modularity) e << "Participation coefficient requires Modularity.";
-    if (s.betweenness && s.weighted) e << "Betweenness centrality is only available for unweighted networks.";
+    if (s.betweenness && s.weighted &&
+        (!QStringList{"auto", "cpu", "gpu", "calibrate"}.contains(s.bcBackend) || s.bcThreads < 0 || s.bcThreads > 1024))
+        e << "Invalid weighted betweenness backend or CPU thread count.";
     if (!s.construct && !s.globalLp && !s.globalCp && !needsRandom(s) && !anyNodal(s))
         e << "Nothing to do: select at least one step.";
     return e;
@@ -228,7 +234,17 @@ QVector<Command> buildCommands(const Settings& s, const QString& appDir) {
     }
     if (s.participation) cmds << Command{"Participation coefficient", toolPath(appDir, w, "PC_CPU"), {net}};
     if (s.degree) cmds << Command{"Degree centrality", toolPath(appDir, w, "Degree"), {net}};
-    if (s.betweenness && !w) cmds << Command{"Betweenness centrality", toolPath(appDir, false, "CUBC"), {net}};
+    if (s.betweenness) {
+        QString program = toolPath(appDir, w, "CUBC");
+        QStringList args{net};
+        if (w) {
+            const QString gpu = toolPath(appDir, true, "CUBC_GPU");
+            if (s.bcBackend != "cpu" && (s.bcBackend != "auto" || QFileInfo::exists(gpu)))
+                program = gpu;
+            args << "--backend" << s.bcBackend << "--threads" << QString::number(s.bcThreads);
+        }
+        cmds << Command{"Betweenness centrality", program, args};
+    }
     if (s.eigenvector) cmds << Command{"Eigenvector centrality", toolPath(appDir, w, "CUEC"), {net}};
     if (anyNodal(s))
         cmds << Command{"Convert nodal metrics to NIfTI", toolPath(appDir, w, "ConvertNII"), {net, mask, s.maskThreshold}};
@@ -384,8 +400,14 @@ bool parseScript(const QString& text, Settings& out, QString* message) {
             s.participation = true;
         } else if (name == "degree") {
             s.degree = true;
-        } else if (name == "cubc") {
+        } else if (name == "cubc" || name == "cubc_gpu") {
             s.betweenness = true;
+            if (fromWeightedDir) {
+                s.bcBackend = name == "cubc_gpu" ? "gpu" : "cpu";
+                if (a.size() >= 3 && a[1] == "--backend") s.bcBackend = a[2];
+                if (a.size() >= 5 && a[3] == "--threads") s.bcThreads = a[4].toInt();
+            }
+            if (!a.isEmpty() && s.workingDir.isEmpty()) s.workingDir = stripNetworkFolder(a[0]);
         } else if (name == "cuec") {
             s.eigenvector = true;
         } else if (name == "convertnii" && a.size() >= 2) {
@@ -404,7 +426,6 @@ bool parseScript(const QString& text, Settings& out, QString* message) {
     s.weighted = marker == 1;
     if (s.maskThreshold.isEmpty()) s.maskThreshold = "0.2";
     if (s.randomNetworks.isEmpty()) s.randomNetworks = "10";
-    if (s.betweenness && s.weighted) s.betweenness = false;
     out = s;
     if (message) {
         *message = "Settings reconstructed from an older PAGANI script.";

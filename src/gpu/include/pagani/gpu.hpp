@@ -27,6 +27,7 @@ std::size_t fw_matrix_bytes(std::uint32_t n);
 
 // Brandes betweenness (unweighted), ordered-pair convention (see metrics.hpp).
 std::vector<double> betweenness_binary(const Csr& g);
+std::vector<double> betweenness_weighted(const Csr& g);
 
 // Eigenvector centrality by power iteration on (A + I) with cuSPARSE.
 EigenResult eigenvector_centrality(const Csr& g, bool weighted, double tol = 1e-6, int max_iter = 10000);

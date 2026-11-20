@@ -37,7 +37,9 @@ struct Settings {
 
     // nodal metrics
     bool nodalEfficiency = false;
-    bool betweenness = false;      // unweighted networks only
+    bool betweenness = false;
+    QString bcBackend = "auto";  // auto, cpu, gpu or calibrate
+    int bcThreads = 0;           // 0 uses PAGANI_THREADS or, if unset, at most 32 threads
     bool nodalCp = false;
     bool degree = false;
     bool eigenvector = false;

@@ -7,11 +7,16 @@
 namespace pagani {
 namespace cuda {
 
-void fail(const char* what, const char* file, int line, const std::string& detail) {
+void fail(const char* what, const char* file, int line, cudaError_t error) {
     std::string f = file;
     auto p = f.find_last_of("/\\");
     if (p != std::string::npos) f = f.substr(p + 1);
-    throw Error(std::string("CUDA error: ") + detail + "\n  at " + f + ":" + std::to_string(line) + "  (" + what + ")");
+    const std::string message = std::string("CUDA error: ") + cudaGetErrorString(error) +
+        "\n  at " + f + ":" + std::to_string(line) + "  (" + what + ")";
+    if (error == cudaErrorMemoryAllocation || error == cudaErrorDevicesUnavailable ||
+        error == cudaErrorInvalidDevice || error == cudaErrorNoDevice || error == cudaErrorInsufficientDriver ||
+        error == cudaErrorInitializationError) throw ResourceError(message);
+    throw Error(message);
 }
 
 size_t free_device_memory() {
@@ -31,11 +36,11 @@ void init_device(size_t* free_bytes, size_t* total_bytes) {
     int count = 0;
     cudaError_t e = cudaGetDeviceCount(&count);
     if (e != cudaSuccess || count == 0)
-        throw Error(std::string("no usable NVIDIA GPU found (") + cudaGetErrorString(e) +
+        throw ResourceError(std::string("no usable NVIDIA GPU found (") + cudaGetErrorString(e) +
                     "). Please install a recent NVIDIA driver; the GPU tools require CUDA 12 compatible drivers (>= 527.41 on Windows).");
     int dev = 0;
     if (const char* env = std::getenv("PAGANI_GPU")) dev = std::atoi(env);
-    if (dev < 0 || dev >= count) throw Error("PAGANI_GPU=" + std::to_string(dev) + " but only " + std::to_string(count) + " GPU(s) present");
+    if (dev < 0 || dev >= count) throw ResourceError("PAGANI_GPU=" + std::to_string(dev) + " but only " + std::to_string(count) + " GPU(s) present");
     PAGANI_CUDA(cudaSetDevice(dev));
     size_t f = 0, t = 0;
     PAGANI_CUDA(cudaMemGetInfo(&f, &t));

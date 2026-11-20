@@ -1,0 +1,177 @@
+{
+  "source": "https://raw.githubusercontent.com/brainlife/BCT/9465343d33bfdfd22fd0a6f0c10235f544f0e427/BCT/2019_03_03_BCT/betweenness_wei.m",
+  "source_sha256": "87e3ad6dcb71541ac4cdd46d82e093be5e7e1541c5c3e03ab8a1ad54782e432c",
+  "function": "betweenness_wei(L)",
+  "matlab_release": "2026a",
+  "input_precision": "1.0 / double(single(CSR weight))",
+  "cases": [
+    {
+      "name": "weighted_diamond_tie",
+      "nodes": 4,
+      "edges": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          0.5
+        ],
+        [
+          1,
+          3,
+          0.5
+        ],
+        [
+          2,
+          3,
+          1
+        ]
+      ],
+      "expected": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "equal_direct_and_multihop",
+      "nodes": 3,
+      "edges": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          0.5
+        ]
+      ],
+      "expected": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "disconnected_diamond_chain_isolate",
+      "nodes": 8,
+      "edges": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          1
+        ],
+        [
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          4,
+          5,
+          0.25
+        ],
+        [
+          5,
+          6,
+          0.5
+        ]
+      ],
+      "expected": [
+        1,
+        1,
+        1,
+        1,
+        0,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "weighted_unique_paths",
+      "nodes": 5,
+      "edges": [
+        [
+          0,
+          1,
+          0.4
+        ],
+        [
+          1,
+          2,
+          0.7
+        ],
+        [
+          2,
+          3,
+          0.8
+        ],
+        [
+          3,
+          4,
+          0.35
+        ],
+        [
+          4,
+          0,
+          0.1
+        ],
+        [
+          0,
+          2,
+          0.25
+        ],
+        [
+          1,
+          3,
+          0.6
+        ],
+        [
+          1,
+          4,
+          0.15
+        ]
+      ],
+      "expected": [
+        0,
+        6,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "name": "edgeless",
+      "nodes": 4,
+      "edges": [],
+      "expected": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

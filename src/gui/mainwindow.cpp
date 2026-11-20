@@ -31,6 +31,7 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSplitter>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QTextStream>
 #include <QToolButton>
@@ -93,6 +94,7 @@ void MainWindow::buildUi() {
     maskThreshold_->setToolTip(tip("Voxels whose mask value is &ge; this threshold are network nodes. "
                                    "Scaling factors stored in the mask header (e.g. SPM c1 maps) are applied."));
     networkType_ = new QComboBox;
+    networkType_->setObjectName("networkType");
     networkType_->addItems({"Unweighted", "Weighted"});
     networkType_->setToolTip(tip("Unweighted networks use the tools in <b>exefiles</b>, weighted networks "
                                  "(edge weight = correlation) those in <b>exefiles_weighted</b>."));
@@ -192,13 +194,27 @@ void MainWindow::buildUi() {
     degree_ = new QCheckBox("Degree centrality");
     degree_->setToolTip(tip("Unweighted: number of edges. Weighted: nodal strength."));
     betweenness_ = new QCheckBox("Betweenness centrality");
+    betweenness_->setObjectName("betweenness");
     eigenvector_ = new QCheckBox("Eigenvector centrality");
     participation_ = new QCheckBox("Participation coefficient");
     participation_->setToolTip(tip("Requires the module partition (Modularity is enabled automatically)."));
     nGrid->addWidget(nodalEff_, 0, 0);
     nGrid->addWidget(nodalCp_, 0, 1);
     nGrid->addWidget(degree_, 0, 2);
+    bcBackend_ = new QComboBox;
+    bcBackend_->setObjectName("bcBackend");
+    bcBackend_->addItem("Auto", "auto");
+    bcBackend_->addItem("CPU", "cpu");
+    bcBackend_->addItem("GPU", "gpu");
+    bcBackend_->addItem("Calibrate CPU + GPU", "calibrate");
+    bcBackend_->setToolTip("Auto chooses per network. Calibrate times both backends and saves a local preference.");
+    bcThreads_ = new QSpinBox;
+    bcThreads_->setRange(0, 1024);
+    bcThreads_->setSpecialValueText("Default threads");
+    bcThreads_->setSuffix(" threads");
+    bcThreads_->setToolTip("Default uses PAGANI_THREADS if set, otherwise up to 32 CPU threads.");
     nGrid->addWidget(betweenness_, 1, 0);
+    nGrid->addWidget(row({bcBackend_, bcThreads_}), 2, 0, 1, 2);
     nGrid->addWidget(eigenvector_, 1, 1);
     nGrid->addWidget(participation_, 1, 2);
 
@@ -304,10 +320,11 @@ void MainWindow::updateEnabledState() {
     cpType_->setVisible(weighted);
     cpTypeLabel_->setVisible(weighted);
     modAlgorithm_->setEnabled(modularity_->isChecked());
-    if (weighted && betweenness_->isChecked()) betweenness_->setChecked(false);
-    betweenness_->setEnabled(!weighted);
-    betweenness_->setToolTip(weighted ? tip("Betweenness centrality is only available for unweighted networks.")
-                                      : tip("Brandes' algorithm on the GPU; output *_bc.nm"));
+    bcBackend_->setVisible(weighted);
+    bcThreads_->setVisible(weighted);
+    bcBackend_->setEnabled(betweenness_->isChecked());
+    bcThreads_->setEnabled(betweenness_->isChecked());
+    betweenness_->setToolTip(tip("Brandes' betweenness centrality; output *_bc.nm"));
     const bool needRandom = gamma_->isChecked() || lambda_->isChecked() || sigma_->isChecked() || modularity_->isChecked();
     randomNetworks_->setEnabled(needRandom);
 }
@@ -335,7 +352,9 @@ Settings MainWindow::settings() const {
     s.cpType = cpType_->currentIndex() == 1 ? 1 : 2;
     s.randomNetworks = randomNetworks_->text().trimmed();
     s.nodalEfficiency = nodalEff_->isChecked();
-    s.betweenness = betweenness_->isChecked() && !s.weighted;
+    s.betweenness = betweenness_->isChecked();
+    s.bcBackend = bcBackend_->currentData().toString();
+    s.bcThreads = bcThreads_->value();
     s.nodalCp = nodalCp_->isChecked();
     s.degree = degree_->isChecked();
     s.eigenvector = eigenvector_->isChecked();
@@ -366,6 +385,8 @@ void MainWindow::applySettings(const Settings& s) {
     randomNetworks_->setText(s.randomNetworks);
     nodalEff_->setChecked(s.nodalEfficiency);
     betweenness_->setChecked(s.betweenness);
+    bcBackend_->setCurrentIndex(std::max(0, bcBackend_->findData(s.bcBackend)));
+    bcThreads_->setValue(s.bcThreads);
     nodalCp_->setChecked(s.nodalCp);
     degree_->setChecked(s.degree);
     eigenvector_->setChecked(s.eigenvector);

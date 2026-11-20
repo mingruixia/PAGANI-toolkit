@@ -10,12 +10,17 @@
 namespace pagani {
 namespace cuda {
 
-[[noreturn]] void fail(const char* what, const char* file, int line, const std::string& detail);
+class ResourceError : public Error {
+public:
+    using Error::Error;
+};
+
+[[noreturn]] void fail(const char* what, const char* file, int line, cudaError_t error);
 
 #define PAGANI_CUDA(call)                                                                             \
     do {                                                                                              \
         cudaError_t e_ = (call);                                                                      \
-        if (e_ != cudaSuccess) ::pagani::cuda::fail(#call, __FILE__, __LINE__, cudaGetErrorString(e_)); \
+        if (e_ != cudaSuccess) ::pagani::cuda::fail(#call, __FILE__, __LINE__, e_); \
     } while (0)
 
 #define PAGANI_KERNEL_CHECK() PAGANI_CUDA(cudaGetLastError())
@@ -39,8 +44,10 @@ public:
         release();
         if (n) {
             cudaError_t e = cudaMalloc(reinterpret_cast<void**>(&p_), n * sizeof(T));
-            if (e != cudaSuccess)
-                throw Error("GPU memory allocation of " + std::to_string((n * sizeof(T)) >> 20) +
+            if (e != cudaSuccess && e != cudaErrorMemoryAllocation)
+                fail("cudaMalloc", __FILE__, __LINE__, e);
+            if (e == cudaErrorMemoryAllocation)
+                throw ResourceError("GPU memory allocation of " + std::to_string((n * sizeof(T)) >> 20) +
                             " MB failed (" + cudaGetErrorString(e) + "). Free GPU memory: " +
                             std::to_string(free_device_memory() >> 20) + " MB");
         }

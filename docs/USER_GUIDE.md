@@ -103,7 +103,7 @@ modularity (Louvain, Newman on GPU, Newman on CPU) and the number of random
 networks used by gamma/lambda/sigma and the modularity of random networks.
 
 **Nodal Metrics** — nodal efficiency, nodal clustering coefficient, degree
-(strength for weighted networks), betweenness (unweighted only), eigenvector
+(strength for weighted networks), betweenness (weighted or unweighted), eigenvector
 centrality and participation coefficient. Nodal metrics are written as `.nm`
 files and converted to NIfTI images with the mask.
 
@@ -177,11 +177,14 @@ sparsity thresholds).
 | `CUBFW_Lp` (GPU) / `BFS_MulCPU` (CPU) | `dir n_random flags` — flags: `g` global Lp, `n` nodal efficiency, `l` lambda | `_Lp.txt` (Lp of the network, then of each random network), `_eff.nm`, `_lambda.txt` |
 | `Cp` (unweighted) | `dir n_random flags` — `g` global, `n` nodal, `k` gamma | `_cp.txt`, `_cp.nm`, `_gamma.txt` |
 | `Cp` (weighted) | `dir n_random [type] flags` — type `1` Barrat, `2` Onnela (default) | as above |
+| `LocalEfficiency` (unweighted) | `dir n_random flags` with `g` for mean, `n` for nodal, and `r` for random-network normalization | `_leff.txt`, `_leff.nm`, `_leff_norm.txt` |
+| `LocalEfficiency` (weighted) | `dir n_random flags [--normalize-weights]`, with the same output flags | as above |
 | `SmallWorldProperty` | `dir` (after Lp with `l` and Cp with `k`) | `_smallWorld.txt` (sigma = gamma / lambda) |
 | `Louvain_Modularity`, `Newman_Modularity_CPU`, `CUmodularity` / `CUModularity` (GPU Newman) | `dir [n_random]` | `_modu.nm` (module of each node: 1…M, 0 = isolated), `_modu.txt` (Q and number of modules of the network and of each random network) |
 | `PC_CPU` | `dir` (after a modularity tool) | `_pc.nm`, `_pc_normalized.nm` |
 | `Degree` | `dir` | `_deg.nm` (degree / strength) |
 | `CUBC` (unweighted) | `dir` | `_bc.nm` |
+| `CUBC` (weighted CPU) / `CUBC_GPU` (CUDA), both in `exefiles_weighted` | `dir` | `_bc.nm` |
 | `CUEC` | `dir` | `_ec.nm`, `_evalue.txt` |
 | `ConvertNII` | `dir mask.nii [mask_threshold]` | `<file>.nii` for every `.nm` file in `dir` |
 | `Maslov` | `network.csr` | `<network>_Maslov.csr` (one random network) |
@@ -191,6 +194,33 @@ Definitions
 - Lp = 1 / global efficiency (harmonic mean of the shortest path lengths, so
   disconnected node pairs are allowed); nodal efficiency = mean of 1/d(i,j)
   over all other nodes. Weighted distance = 1 / weight.
+- `LocalEfficiency` measures how well a node's neighbours can reach each
+  other through the subgraph induced by those neighbours. Paths exclude the
+  center node. Each unreachable ordered pair contributes zero, and nodes
+  with fewer than two neighbours have zero local efficiency. The global
+  result is the mean of these values across all nodes.
+- Weighted `LocalEfficiency` is available in `exefiles_weighted` and follows
+  BCT `efficiency_wei(W, 2)`. For each center node i, the length of an edge
+  in its neighbour subgraph is w^(-1/3). An ordered neighbour pair j, h
+  contributes (w_ij w_ih)^(1/3) divided by its shortest-path length in that
+  subgraph. The denominator is k_i(k_i - 1), including unreachable pairs.
+  The input requires finite positive weights and symmetric weights on
+  reciprocal edges. The command uses the stored weights by default.
+  Add `--normalize-weights` to divide all edge weights by the network maximum
+  before the calculation. Run the two modes in separate directories if
+  both sets of files are needed. They use the same output names.
+  See [MATLAB BCT reference](https://raw.githubusercontent.com/brainlife/BCT/9465343d33bfdfd22fd0a6f0c10235f544f0e427/BCT/2019_03_03_BCT/efficiency_wei.m).
+- With `g`, the first line of `_leff.txt` is the observed mean. If
+  `n_random` is positive, the following lines are the random-network means.
+  With `r`, a positive number of random networks is required. The
+  normalized result is the observed mean divided by the mean over the
+  random networks. A zero denominator produces `nan` and a warning.
+  `PAGANI_SEED` uses the same degree-preserving random-network sequence
+  as the other network metrics. In weighted networks, weights move with
+  their edges, preserving the weight distribution. Max-weight scaling
+  therefore changes the observed and random means by the same factor,
+  leaving the random-network ratio unchanged up to rounding.
+
 - Cp is the mean of the nodal clustering coefficients over all nodes (nodes
   with degree < 2 count as 0).
 - gamma = Cp / mean(Cp of random networks); lambda = Lp / mean(Lp of random
@@ -198,7 +228,36 @@ Definitions
   sequence (Maslov & Sneppen 2002); for weighted networks the weights move with
   the edges. Within one GUI run (or with one `PAGANI_SEED`) gamma, lambda and the
   modularity of random networks are computed from the same random networks.
-- Betweenness counts every ordered pair of nodes (as BCT `betweenness_bin`).
+- Betweenness uses unnormalized ordered node pairs, as in BCT `betweenness_bin`
+  and the undirected use of BCT `betweenness_wei`. Weighted betweenness
+  requires a symmetric network with finite positive weights and uses edge
+  lengths 1 / weight. Each reachable pair contributes the fraction of its
+  shortest paths that pass through the node, with endpoints excluded.
+  Unreachable pairs and isolated nodes contribute zero. For a source, let
+  d(u) and d(v) be the shortest distances to u and v. An edge u → v can
+  contribute when d(u) < d(v) and d(u) + edge length and d(v) agree to a
+  relative tolerance of 10⁻¹², measured against the larger value. MATLAB
+  BCT uses exact floating-point equality, so values can differ for nearly
+  equal paths. See the [MATLAB BCT reference](https://raw.githubusercontent.com/brainlife/BCT/9465343d33bfdfd22fd0a6f0c10235f544f0e427/BCT/2019_03_03_BCT/betweenness_wei.m).
+- For weighted betweenness the GUI offers Auto, CPU, GPU and an explicit
+  calibration run. Auto processes each CSR once, after network construction.
+  On the measured Windows 3970X / RTX 3080 Ti system (driver 621.14, 32 CPU
+  threads), it prefers CUDA for 19,574 nodes at the measured 0.50% and 1.00%
+  densities when isolate counts match the benchmark range. Other profiles
+  default to CPU until calibrated. Default threads honors PAGANI_THREADS or
+  uses at most 32 threads. The GUI log gives the backend and reason per file.
+- Calibration runs both algorithms on each selected network, checks numerical
+  agreement and writes one result. It saves a local preference by processor,
+  thread count, device, driver, algorithm revision, node and edge counts and
+  isolate fraction (five-percentage-point bins), and available source batch size. GPU must beat CPU by a time
+  ratio of at least 1.10. Calibration times include current device setup and
+  metric computation, excluding CSR I/O. Auto retries CPU once on CUDA resource
+  failures. Explicit GPU and calibration runs report those failures.
+  Set PAGANI_BC_CACHE_DIR to choose a calibration directory.
+- Run `exefiles_weighted/CUBC_GPU dir` for weighted betweenness on an NVIDIA
+  GPU. The CPU and GPU commands write the same output names. Use separate
+  output directories to retain both results. The GPU log reports the peak
+  size in bytes of the algorithm's simultaneously allocated CUDA buffers.
 - Eigenvector centrality is the leading eigenvector, non-negative, with unit
   length.
 - Participation coefficient PC = 1 − Σ_m (k_im / k_i)²; the normalised value is

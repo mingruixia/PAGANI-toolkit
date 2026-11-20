@@ -30,6 +30,17 @@ enum class ClusteringType {
 // Returns mean clustering over all nodes; nodal values in `nodal` (size N).
 double clustering(const Csr& g, ClusteringType type, std::vector<float>& nodal);
 
+// Binary local efficiency on each node's induced neighbourhood. Nodes of
+// degree < 2 and unreachable neighbour pairs contribute zero.
+// Returns the mean across all nodes and fills nodal in CSR node order.
+double local_efficiency_binary(const Csr& g, std::vector<float>& nodal);
+
+// Modified BCT weighted local efficiency (efficiency_wei(W, 2)) on a
+// symmetric network with positive finite weights. Optional max-weight
+// normalization applies to the entire network.
+double local_efficiency_weighted(const Csr& g, std::vector<float>& nodal,
+                                 bool normalize_weights = false);
+
 // --------------------------------------------------------------- efficiency
 struct EfficiencyResult {
     double lp = 0.0;                 // 1 / global efficiency (inf if no edges)
@@ -49,6 +60,15 @@ EfficiencyResult efficiency_from_inverse_sums(const std::vector<double>& inv_sum
 // counted, i.e. values are twice the undirected-pair convention (as in BCT
 // betweenness_bin and PAGANI 2.0).
 std::vector<double> betweenness_binary(const Csr& g);
+
+// Positive symmetric weighted CSR, length = 1 / weight. Uses the same
+// unnormalized, ordered-pair convention as betweenness_binary.
+// A shortest-path arc must go from smaller to larger distance. Its
+// distance sum must match the destination within relative tolerance.
+inline constexpr double kWeightedBetweennessRelativeTolerance = 1e-12;
+std::vector<double> betweenness_weighted(const Csr& g);
+// Validate symmetric positive weights and return FP64 reciprocal edge lengths.
+std::vector<double> weighted_betweenness_lengths(const Csr& g);
 
 // ----------------------------------------------------- eigenvector centrality
 // Leading eigenvector (unit L2 norm, non-negative) and eigenvalue.

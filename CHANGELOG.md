@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Added `LocalEfficiency` for unweighted and weighted CSR networks. It
+  reports nodal and mean local efficiency, with optional normalization
+  against degree-preserving random networks. The weighted version follows
+  BCT `efficiency_wei(W, 2)`. It uses the stored weights by default and accepts
+  `--normalize-weights` to scale them by the network maximum.
+
+- Added weighted betweenness to `exefiles_weighted` with `CUBC` for CPU and
+  `CUBC_GPU` for CUDA. Both read weighted CSR networks and write unnormalized
+  nodal betweenness to the existing `_bc.nm` format. The Qt GUI supports
+  per-network automatic selection, manual CPU or GPU, and optional local
+  calibration. Exported scripts use the same dispatch as interactive runs.
+
 ## 2.3.0 — 2026-10-30
 
 Compressed input images, a Linux package for servers and clusters, and GPU

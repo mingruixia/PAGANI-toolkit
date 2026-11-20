@@ -15,6 +15,7 @@ class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
 class QRadioButton;
+class QSpinBox;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -79,6 +80,8 @@ private:
     QCheckBox* nodalCp_;
     QCheckBox* degree_;
     QCheckBox* betweenness_;
+    QComboBox* bcBackend_;
+    QSpinBox* bcThreads_;
     QCheckBox* eigenvector_;
     QCheckBox* participation_;
     // run

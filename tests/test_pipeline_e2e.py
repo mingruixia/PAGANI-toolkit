@@ -64,7 +64,7 @@ def test_gui_script_runs(tmp_path, weighted):
         "groupNetwork": True, "fisherAverage": True, "saveCorMatrix": False,
         "globalLp": True, "globalCp": True, "gamma": True, "lambda": True, "sigma": True,
         "modularity": True, "modularityAlgorithm": 0, "cpType": 2, "randomNetworks": "3",
-        "nodalEfficiency": True, "betweenness": not weighted, "nodalCp": True, "degree": True,
+        "nodalEfficiency": True, "betweenness": True, "bcBackend": "cpu", "nodalCp": True, "degree": True,
         "eigenvector": True, "participation": True,
     }
     sf = tmp_path / "settings.json"
@@ -85,5 +85,4 @@ def test_gui_script_runs(tmp_path, weighted):
         for suffix in ("_Lp.txt", "_lambda.txt", "_cp.txt", "_gamma.txt", "_smallWorld.txt", "_modu.txt",
                        "_eff.nii", "_cp.nii", "_deg.nii", "_ec.nii", "_pc.nii", "_pc_normalized.nii", "_modu.nii"):
             assert Path(stem + suffix).exists(), stem + suffix
-        if not weighted:
-            assert Path(stem + "_bc.nii").exists()
+        assert Path(stem + "_bc.nii").exists()

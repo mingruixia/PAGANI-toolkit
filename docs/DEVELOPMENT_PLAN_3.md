@@ -29,8 +29,8 @@
 |---|---|---|---|
 | **M6 压缩输入** | F1（含 GUI 中的文件选择与提示） | 小 | `v2.3.0` 的一部分 |
 | **M7 Linux 命令行版** | F2 | 中 | Linux 发行包；与 M6 一起发布 **`v2.3.0`** |
-| **M8 局部效率** | F3（CPU，必要时 GPU） | 中 | 新程序 + 测试 |
-| **M9 加权介数** | F4（CPU 参考实现 + GPU 版） | 中–大 | 新程序 + 测试 |
+| **M8 局部效率** | F3 无权与加权 CPU 实现 | 中 | 两个命令行版本及合成数据验证已完成 |
+| **M9 加权介数** | F4（CPU 参考实现 + GPU 版） | 中–大 | CPU 和 CUDA 命令行均已实现，通过逐节点对照 |
 | **M10 同配与富人俱乐部** | F5 | 小–中 | 新程序 + 测试 |
 | **M11 集成与发布** | F6：GUI、脚本、文档、真实数据验证 | 中 | **`v3.0.0`** |
 
@@ -61,19 +61,44 @@
 
 ### 3.3 M8：局部效率（LocalEfficiency）
 
-- **定义**：
-  - 无权：Latora & Marchiori 2001；节点 i 的局部效率为其邻居导出子图（不含 i）的全局效率，`E_loc(i) = Σ_{j≠h∈N_i} 1/d_jh(G_i) / (k_i (k_i − 1))`，k_i < 2 时为 0。与 networkx `local_efficiency` 及 BCT `efficiency_bin(A, 1)` 相同。
-  - 加权：采用 Wang et al. 2017 修正后的定义（BCT `efficiency_wei(W, 2)`）：权重除以网络最大权重归一化到 (0, 1]，子图内距离为 1/w，`E_loc(i) = Σ_{j≠h} (w_ij w_ih / d_jh(G_i))^{1/3} / (k_i (k_i − 1))`。**待你确认**（另一选项是 Rubinov & Sporns 2010 的原始定义 `efficiency_wei(W, 1)`，GRETNA 等工具使用的版本需核对后在手册中注明）。
-  - 全局局部效率为节点值的平均；可选 `E_loc / 平均 E_loc(随机网络)`，随机网络与 λ、γ 同一组。
-- **算法**：每个节点只在其 k_i 个邻居构成的子图上计算。无权用位并行 BFS（邻接行存为 k_i 位的位集），加权用稠密 O(k_i²) 的 Dijkstra（子图通常很稠密，不用堆）；按节点多线程并行。估算 1 % 稀疏度（平均度约 200）的 19,574 节点网络在 CPU 上为秒到分钟级；若加权版超过 1 分钟的目标，再将各节点的子图批量放到 GPU 上计算。
-- **程序**：`LocalEfficiency(.exe) dir_for_csr num_of_random_networks flags`（flags：`g` 全局、`n` 节点、`r` 随机网络归一化），输出 `<network>_leff.nm`、`<network>_leff.txt`、`<network>_leff_norm.txt`，与 `Cp` 的参数与输出风格一致。
+- **无权版**：先构建每个节点的邻居诱导子图，排除中心节点。局部效率是子图内全部有序不同节点对的最短路径倒数均值。不可达对贡献 0，度小于 2 的节点取 0。全局结果对所有节点取平均。定义参见 [NetworkX local_efficiency](https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.efficiency_measures.local_efficiency.html)。
+- **无权 CPU 算法**：邻居诱导子图使用稀疏邻接表，每个源点用 BFS 计算最短路，按节点并行。每个线程复用工作区，全局均值按原节点顺序累计。运行时间取决于邻居子图的规模和连通结构。
+- **命令和输出**：`LocalEfficiency dir_for_csr num_of_random_networks flags`。用 `g` 写均值和可选随机网络均值，用 `n` 写节点值，用 `r` 写随机网络归一化值。输出分别为 `_leff.txt`、`_leff.nm` 和 `_leff_norm.txt`，详细约定见 [使用手册](USER_GUIDE.md)。给定 `PAGANI_SEED` 时，复用无权 λ 和 γ 所用的随机网络生成序列。
+- **加权版**：采用 MATLAB BCT 的修订版 `efficiency_wei(W, 2)`。邻居子图的边长为 `w^(-1/3)`，用这些长度求最短路 `d*`。每个有序邻居对 j、h 的分子贡献为 `(w_ij w_ih)^(1/3) / d*`。以邻居对数求均值，不可达对贡献 0，度小于 2 的节点取 0。CPU 后端用稀疏邻居子图与 Dijkstra。默认使用 CSR 中的原始权重。加权目录中的命令接受可选末尾参数 `--normalize-weights`，按网络最大权重缩放。随机网络保留边权分布，使用相同缩放和种子约定。参见 [MATLAB BCT 实现](https://raw.githubusercontent.com/brainlife/BCT/9465343d33bfdfd22fd0a6f0c10235f544f0e427/BCT/2019_03_03_BCT/efficiency_wei.m)。
+
+#### 2026-11-20 无权版验证记录
+
+Windows 11 的 Release CPU 构建通过，使用 MSVC 19.34 和 CMake 3.24。回归套件 75 项通过，24 项按配置跳过。跳过项需要 GPU、启用大规模测试或构建 Qt GUI。本轮包含 9 项 LocalEfficiency 命令测试，覆盖手算例子、NetworkX 节点和全局对照、归一化、固定种子跨线程复现及异常输入。
+
+| 19,574 节点的无权合成图 | 无向边数 | 实际密度 | 命令耗时中位数 | 平均局部效率 |
+|---|---:|---:|---:|---:|
+| 随机图，固定种子 44 | 1,915,610 | 1.0000% | 0.90 s | 0.113837 |
+| 每个节点与环上左右各 98 个节点相连 | 1,918,252 | 1.0014% | 1.95 s | 0.873068 |
+
+每种图执行 3 次，设置 `PAGANI_THREADS=32`。命令同时读取 CSR 并写出节点和全局指标，随机网络数为 0。随机图抽查 5 个节点的邻居子图，环形图利用旋转对称性核对全部节点。两项均与 NetworkX 对照通过。本记录覆盖 Windows CPU 的合成数据，真实数据性能和 Linux 发行包验证留在后续里程碑。
+
+
+#### 2026-11-20 加权版验证记录
+
+使用 MATLAB R2026a 直接运行固定版本的 BCT 原函数，对四组小图分别计算原始权重与最大权重缩放后的参考结果。PAGANI 的节点值和全局均值通过全部 8 组对照。独立 SciPy 全对最短路测试进一步核对了随机加权小图。全量 Windows CPU 回归 91 项通过、24 项按配置跳过，其中局部效率专项 25 项全部通过。CMake 安装验证了无权及加权程序都进入对应目录。[MATLAB 参考数据和源码版本](../tests/fixtures/bct_weighted_local_efficiency.json)
+
+| 19,574 节点的加权合成图 | 实际密度 | 命令耗时中位数 | 平均局部效率 |
+|---|---:|---:|---:|
+| 随机图 | 1.0000% | 2.90 s | 0.056138 |
+| 环形图，每节点连接左右各 98 个节点 | 1.0014% | 17.28 s | 0.452335 |
+
+沿用无权基准的两种拓扑，用种子 65 从 [0.1, 1) 均匀生成边权。每种运行 3 次，使用 32 个 CPU 线程和原始权重输出节点值及全局均值。耗时含 CSR 读取和结果写出，随机网络数为 0。两种图各抽查 5 个节点，与独立最短路参考一致。真实数据及 GUI 集成列入 M11。
+
 
 ### 3.4 M9：加权介数中心度
 
-- **定义**：Brandes 算法，边长 = 1/权重（与加权 Lp 一致），有序节点对计数，与现有无权 `CUBC`（及 BCT `betweenness_bin`）同一约定，对照 bctpy `betweenness_wei(1/W)`。加权路径长度为浮点数，判定“等长最短路径”使用相对容差 1e-12 并在手册中说明。
-- **CPU 参考实现**：`metrics.cpp` 中每个源点一次 Dijkstra，多线程；用于测试和 GPU 版的 CPU 回退。
-- **GPU 版**：沿用 `CUBC` 的“每个线程块一个源点”结构，最短路改为基于前沿的单源最短路（Bellman–Ford 前沿 / delta-stepping），再按距离降序回传依赖值。估算 CPU 版在 19,574 节点网络上为数十分钟，GPU 版目标 < 2 分钟。
-- **程序**：`exefiles_weighted/CUBC(.exe)`，参数与无权版相同。GUI 中加权模式的 BC 选项（2.1 起因缺少程序而禁用，审计 G-11）随之启用。
+- **定义**。以边长 1/权重计算最短路径，按有序节点对累加未归一化的节点介数。每对可达节点按其等长最短路径数分摊，端点不计入路径介数。不可达节点对和孤立节点贡献为零。已固定对照 [MATLAB BCT betweenness_wei](https://raw.githubusercontent.com/brainlife/BCT/9465343d33bfdfd22fd0a6f0c10235f544f0e427/BCT/2019_03_03_BCT/betweenness_wei.m) 源码版本。
+- **CPU 参考实现**。多线程逐源运行双精度 Dijkstra，距离确定后沿严格递增的距离顺序统计路径数，再逆序累积依赖值。两次遍历共用 1e-12 的相对容差，路径数在对数域累加。加权 CSR 通过 `exefiles_weighted/CUBC(.exe) dir` 计算，输出 `<network>_bc.nm`。GUI 集成列入 M11。
+- **CPU 验收**。MATLAB R2026a 上运行 BCT 得到五组[逐节点参考值](../tests/fixtures/bct_weighted_betweenness.json)。加权菱形结果为 `[1, 1, 1, 1]`，等长直连和两跳结果为 `[0, 1, 0]`，断连的菱形、三点链和孤立节点组合结果为 `[1, 1, 1, 1, 0, 2, 0, 0]`，均与手算一致。BCT 使用精确浮点比较，PAGANI 另外验收相对容差的两侧。专项用例 18 项全部通过，CPU 回归 109 项通过、24 项跳过。Windows Release 构建及安装路径也已验证。本地日志和 JUnit XML 保存在 `tests/_work/m9_cpu/`。
+- 加权 GPU 命令为 `exefiles_weighted/CUBC_GPU(.exe) dir`。GPU 按源点分批计算双精度距离，距离收敛后在最短路径有向无环图上统计等长路径并逆序累积介数。固定顺序合并不同源点的贡献。与 CPU 共用 CSR 输入、边长和结果格式。
+- 本机使用项目内的 Windows CI 同版 CUDA 12.6.2 工具链，在 RTX 3080 Ti 上执行全部 18 项 CPU/GPU 配对测试。另用 K64,64 逐节点核验 64 条等长路径、断连分量及显存受限时的分批计算。大图使用 19,574 个节点和约 1% 密度。逐项误差、32 线程 CPU 与 GPU 耗时、算法缓冲区及整卡采样峰值见 [M9 GPU 验收报告](M9_WEIGHTED_BETWEENNESS_GPU.md)。
+- 真实被试在五个密度点完成配对测试，另用五名留出被试复核 0.20% 档。GUI 的默认后端和本机校准条件见[M9 真实数据与后端选择](M9_REALDATA_BACKEND.md)。
+- Qt 界面已接入加权介数、逐网络自动派发和显式校准。真实混合批次、脚本与控件的验收见 [M9 GUI 集成报告](M9_GUI_BACKEND.md)。
 
 ### 3.5 M10：同配系数与富人俱乐部
 
@@ -125,7 +150,6 @@
 
 ## 7. 待确认事项
 
-1. 加权局部效率采用 Wang et al. 2017（BCT `efficiency_wei(W, 2)`，本计划默认）还是 Rubinov & Sporns 2010（`efficiency_wei(W, 1)`）？
-2. 富人俱乐部是否需要加权版本（Opsahl 2008），还是只做无权版本？
-3. Linux 发行包的最低系统版本（本计划默认 glibc 2.28，即 RHEL/Rocky 8）是否满足你所用的集群？
-4. 新程序名（`LocalEfficiency`、`Assortativity`、`RichClub`、加权 `CUBC`）及输出文件后缀（`_leff`、`_assort`、`_richclub`）是否合适？
+1. 富人俱乐部是否需要加权版本（Opsahl 2008），还是只做无权版本？
+2. Linux 发行包的最低系统版本（本计划默认 glibc 2.28，即 RHEL/Rocky 8）是否满足你所用的集群？
+3. 新程序名（`LocalEfficiency`、`Assortativity`、`RichClub`、加权 `CUBC`）及输出文件后缀（`_leff`、`_assort`、`_richclub`）是否合适？

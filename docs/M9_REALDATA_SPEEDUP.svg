@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 350" font-family="Arial" font-size="13"><title>CPU to GPU wall-time ratio by density and subject</title><rect width="720" height="350" fill="white"/>
+<path d="M80 270.0h560" stroke="#bbb" stroke-dasharray="4 3"/><text x="70" y="274.0" text-anchor="end">0.6</text>
+<path d="M80 217.49999999999997h560" stroke="#bbb" stroke-dasharray="4 3"/><text x="70" y="221.49999999999997" text-anchor="end">0.8</text>
+<path d="M80 165.0h560" stroke="#bbb" stroke-dasharray="4 3"/><text x="70" y="169.0" text-anchor="end">1.0</text>
+<path d="M80 112.5h560" stroke="#bbb" stroke-dasharray="4 3"/><text x="70" y="116.5" text-anchor="end">1.2</text>
+<path d="M80 59.99999999999997h560" stroke="#bbb" stroke-dasharray="4 3"/><text x="70" y="63.99999999999997" text-anchor="end">1.4</text>
+<text x="80.0" y="292" text-anchor="middle">0.05</text>
+<text x="285.36644315156735" y="292" text-anchor="middle">0.15</text>
+<text x="339.1435987389303" y="292" text-anchor="middle">0.2</text>
+<text x="510.42820063053483" y="292" text-anchor="middle">0.5</text>
+<text x="640.0" y="292" text-anchor="middle">1</text>
+<polyline points="80.0,266.5 285.4,221.1 339.1,139.6 510.4,109.4 640.0,99.2" fill="none" stroke="#155a91" stroke-width="2"/>
+<circle cx="80.0" cy="266.48582065256926" r="4" fill="#155a91"/>
+<circle cx="285.36644315156735" cy="221.05445466153276" r="4" fill="#155a91"/>
+<circle cx="339.1435987389303" cy="139.58498986675716" r="4" fill="#155a91"/>
+<circle cx="510.42820063053483" cy="109.40412908007914" r="4" fill="#155a91"/>
+<circle cx="640.0" cy="99.16145958667138" r="4" fill="#155a91"/>
+<text x="80" y="27" fill="#155a91">subject-01</text>
+<polyline points="80.0,175.7 285.4,148.8 339.1,108.7 510.4,94.6 640.0,95.8" fill="none" stroke="#bd5000" stroke-width="2"/>
+<circle cx="80.0" cy="175.66264255727236" r="4" fill="#bd5000"/>
+<circle cx="285.36644315156735" cy="148.75561413879552" r="4" fill="#bd5000"/>
+<circle cx="339.1435987389303" cy="108.7457124733773" r="4" fill="#bd5000"/>
+<circle cx="510.42820063053483" cy="94.6208352999684" r="4" fill="#bd5000"/>
+<circle cx="640.0" cy="95.84093135878209" r="4" fill="#bd5000"/>
+<text x="205" y="27" fill="#bd5000">subject-04</text>
+<polyline points="80.0,131.8 285.4,157.5 339.1,106.7 510.4,100.0 640.0,115.0" fill="none" stroke="#217456" stroke-width="2"/>
+<circle cx="80.0" cy="131.78173219713892" r="4" fill="#217456"/>
+<circle cx="285.36644315156735" cy="157.50007974869345" r="4" fill="#217456"/>
+<circle cx="339.1435987389303" cy="106.71340402179243" r="4" fill="#217456"/>
+<circle cx="510.42820063053483" cy="100.01674205233755" r="4" fill="#217456"/>
+<circle cx="640.0" cy="115.04808354011567" r="4" fill="#217456"/>
+<text x="330" y="27" fill="#217456">subject-08</text>
+<path d="M335.1435987389303 153.59981929469905l8 8m-8 0l8 -8" stroke="#222" stroke-width="1.8"/>
+<path d="M335.1435987389303 141.17776206668913l8 8m-8 0l8 -8" stroke="#222" stroke-width="1.8"/>
+<path d="M335.1435987389303 154.0937246221804l8 8m-8 0l8 -8" stroke="#222" stroke-width="1.8"/>
+<path d="M335.1435987389303 141.08831589092142l8 8m-8 0l8 -8" stroke="#222" stroke-width="1.8"/>
+<path d="M335.1435987389303 162.50974078299873l8 8m-8 0l8 -8" stroke="#222" stroke-width="1.8"/>
+<text x="475" y="27">× held-out subjects</text>
+<text x="360" y="324" text-anchor="middle">Undirected edge density (%)</text>
+<text transform="translate(22 165) rotate(-90)" text-anchor="middle">CPU time / GPU time</text></svg>
