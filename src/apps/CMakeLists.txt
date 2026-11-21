@@ -19,6 +19,11 @@ function(pagani_tool target outname variant)
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${outdir}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${outdir}
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${outdir})
+  if(WIN32)
+    # Variant executables may share a basename, including case-only differences.
+    # Give their MSVC import libraries and .exp files unique names to allow parallel linking.
+    set_target_properties(${target} PROPERTIES ARCHIVE_OUTPUT_NAME ${target})
+  endif()
   if(T_ROOT STREQUAL PAGANI_PACKAGE_DIR)
     if(variant STREQUAL "weighted")
       install(TARGETS ${target} RUNTIME DESTINATION exefiles_weighted)
